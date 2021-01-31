@@ -73,7 +73,7 @@ data Token
   | TokLayoutStart
   | TokLayoutSep
   | TokLayoutEnd
-
+  
 derive instance eqToken :: Eq Token
 
 type SourceToken =
