@@ -6,6 +6,7 @@ import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Char.Unicode as Unicode
 import Data.Lazy (Lazy)
+import Data.Lazy as Lazy
 import Data.Maybe (Maybe(..), isJust, maybe)
 import Data.Newtype (class Newtype, un)
 import Data.String (CodePoint, Pattern(..))
@@ -36,6 +37,9 @@ bump lines cols pos
       { line: pos.line + lines
       , column: cols
       }
+
+lex :: String -> TokenStream
+lex _ = TokenStream $ Lazy.defer \_ -> TokenEOF { column: 0, line: 0 } []
 
 -- lex :: String -> TokenStream
 -- lex = go { line: 0, column: 0 }
