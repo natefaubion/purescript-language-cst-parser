@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Monad.Free (foldFree)
 import Data.Array as Array
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Newtype (unwrap)
@@ -16,10 +16,10 @@ import Effect (Effect)
 import Effect.Aff (Aff, runAff_)
 import Effect.Class (liftEffect)
 import Effect.Console as Console
-import Effect.Exception (Error)
+import Effect.Exception (throwException)
 import Node.ChildProcess as Exec
 import Node.Encoding (Encoding(..))
-import Node.FS.Aff (mkdir, readTextFile, readdir, stat, writeTextFile)
+import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
 import PureScript.CST.Parser as Parser
@@ -29,9 +29,11 @@ import PureScript.CST.Types (Module)
 import Text.Parsing.Parser (ParseError)
 import Text.Parsing.Parser as Parsing
 
+foreign import tmpdir :: String -> Effect String
+
 main :: Effect Unit
-main = runAff_ cleanup do
-  mkdir tmpPath
+main = runAff_ (either throwException mempty) do
+  tmpPath <- liftEffect $ tmpdir "cst-integration-"
   writeTextFile UTF8 (tmpPath <> "/spago.dhall") defaultSpagoDhall
 
   let installCmd = "cd " <> tmpPath <> "; spago -x spago.dhall ls packages | cut -f 1 -d \' \' | xargs spago install"
@@ -68,16 +70,6 @@ main = runAff_ cleanup do
       ]
 
   liftEffect $ Console.log successMessage
-
-cleanup :: Either Error Unit -> Effect Unit
-cleanup _ = do
-  let
-    cleanupCmd = "rm -rf " <> tmpPath
-  _ <- Exec.execSync cleanupCmd Exec.defaultExecSyncOptions
-  pure unit
-
-tmpPath :: FilePath
-tmpPath = "./integration/tmp"
 
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
