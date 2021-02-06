@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "scripts": {
+    "parse-package-set": "spago -x integration.dhall run"
+  }
+}
