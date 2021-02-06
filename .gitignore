@@ -2,6 +2,7 @@ bower_components
 node_modules
 output
 generated-docs
+tmp
 
 .pulp-cache
 .psc-package

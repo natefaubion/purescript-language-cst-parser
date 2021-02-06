@@ -47,12 +47,14 @@ main = runAff_ cleanup do
 
   liftEffect $ forWithIndex_ partition.left \ix failed -> do
     let
-      message = Array.intercalate " "
-        [ "[Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> "]"
+      message = Array.intercalate "\n"
+        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> "] ----"
         , "Failed to parse module at path:"
         , failed.path
+        , ""
         , "With error:"
         , show failed.parseError
+        , ""
         ]
     Console.error message
 
