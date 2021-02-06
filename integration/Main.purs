@@ -2,7 +2,8 @@ module Main where
 
 import Prelude
 
-import Control.Monad.Free (runFree)
+import Control.Monad.Free (foldFree)
+import Data.Array (foldMap)
 import Data.Array as Array
 import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
@@ -83,8 +84,7 @@ defaultSpagoDhall = Array.intercalate "\n"
 
 getPursFiles :: FilePath -> Aff (Array FilePath)
 getPursFiles root = do
-  files <- readdir root
-  map join $ for files \file -> do
+  readdir root >>= foldMap \file -> do
     let path = root <> "/" <> file
     stats <- stat path
     if FS.isDirectory stats then
@@ -110,4 +110,4 @@ parseModuleFromFile path = do
 
 parse :: TokenStream -> Either ParseError (Module Unit)
 parse tokenStream =
-  runFree unwrap $ Parsing.runParserT tokenStream Parser.parseModule
+  unwrap $ foldFree identity $ Parsing.runParserT tokenStream Parser.parseModule
