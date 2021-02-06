@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Control.Monad.Free (foldFree)
+import Control.Monad.Free (runFree)
 import Data.Array as Array
 import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
@@ -110,4 +110,4 @@ parseModuleFromFile path = do
 
 parse :: TokenStream -> Either ParseError (Module Unit)
 parse tokenStream =
-  unwrap $ foldFree identity $ Parsing.runParserT tokenStream Parser.parseModule
+  runFree unwrap $ Parsing.runParserT tokenStream Parser.parseModule
