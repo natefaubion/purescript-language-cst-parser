@@ -16,8 +16,10 @@ import Data.Identity (Identity)
 import Data.Lazy as Lazy
 import Data.Maybe (Maybe(..), optional)
 import Data.Newtype (unwrap)
+import Data.Set (Set)
+import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
-import PureScript.CST.Print (printToken)
+import PureScript.CST.Print (TokenOption(..), printTokenWithOption)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), step)
 import PureScript.CST.Types (Binder(..), ClassFundep(..), Comment, DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), LineFeed, Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
 import Text.Parsing.Parser (ParseError, ParseState(..), ParserT, fail, failWithPosition, runParserT)
@@ -44,7 +46,7 @@ expectMap pred = do
       case pred tok of
         Nothing ->
           failWithPosition
-            ("Unexpected token " <> printToken tok.value)
+            ("Unexpected token " <> printTokenWithOption ShowLayout tok.value) -- TODOD: Better token name printer for errors
             (Position tok.range.start)
         Just a -> do
           put $ ParseState next (Position nextPos) true
@@ -835,13 +837,13 @@ parseLabel = expectMap case _ of
 
 parseIdent :: Parser (Name Ident)
 parseIdent = expectMap case _ of
-  tok@{ value: TokLowerName Nothing ident } ->
+  tok@{ value: TokLowerName Nothing ident } | not $ Set.member ident reservedKeywords ->
     Just $ Name { token: tok, name: Ident ident }
   _ -> Nothing
 
 parseQualifiedIdent :: Parser (QualifiedName Ident)
 parseQualifiedIdent = expectMap case _ of
-  tok@{ value: TokLowerName mn ident } ->
+  tok@{ value: TokLowerName mn ident } | not $ Set.member ident reservedKeywords ->
     Just $ QualifiedName { token: tok, "module": mn, name: Ident ident }
   _ -> Nothing
 
@@ -979,3 +981,31 @@ isKeySymbol :: String -> Token -> Boolean
 isKeySymbol sym = case _ of
   TokSymbolName Nothing name -> sym == name
   _ -> false
+
+reservedKeywords :: Set String
+reservedKeywords = Set.fromFoldable
+  [ "ado"
+  , "case"
+  , "class"
+  , "data"
+  , "derive"
+  , "do"
+  , "else"
+  , "false"
+  , "foreign"
+  , "if"
+  , "import"
+  , "in"
+  , "infix"
+  , "infixl"
+  , "infixr"
+  , "instance"
+  , "let"
+  , "module"
+  , "newtype"
+  , "of"
+  , "then"
+  , "true"
+  , "type"
+  , "where"
+  ]

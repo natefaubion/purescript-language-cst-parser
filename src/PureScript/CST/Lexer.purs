@@ -289,6 +289,8 @@ token =
             TokForall Unicode
           "=" ->
             TokEquals
+          "." ->
+            TokDot
           _ ->
             TokOperator moduleName symbol
       Just _ ->
@@ -296,7 +298,7 @@ token =
         TokOperator moduleName symbol
 
   parseSymbol moduleName = do
-    symbol <- SPSCU.char '(' *> parseSymbolIdent <* SPSCU.char ')'
+    symbol <- try (SPSCU.char '(' *> parseSymbolIdent) <* SPSCU.char ')'
     pure $ case moduleName of
       Nothing ->
         case symbol of
@@ -312,8 +314,7 @@ token =
         TokSymbolName moduleName symbol
 
   parseHole = do
-    _ <- SPSCU.char '?'
-    ident <- parseIdent <|> parseProper
+    ident <- SPSCU.char '?' *> try (parseIdent <|> parseProper)
     pure $ TokHole ident
 
   parseProper = do
@@ -457,7 +458,7 @@ token =
       <|> SPSCU.string "+"
 
   intPartRegex =
-    SPSCU.regex """0|[1-9][0-9_]*"""
+    SPSCU.regex """(0|[1-9][0-9_]*)"""
 
   fractionPartRegex =
     SPSCU.regex """[0-9_]+"""
