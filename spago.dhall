@@ -8,6 +8,7 @@
   , "foldable-traversable"
   , "free"
   , "maybe"
+  , "numbers"
   , "parsing"
   , "psci-support"
   , "string-parsers"

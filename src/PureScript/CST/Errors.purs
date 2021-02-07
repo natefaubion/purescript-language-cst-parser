@@ -1,5 +1,5 @@
 module PureScript.CST.Errors where
 
 data TokenError
-  = TokErr
+  = TokErr String
   | TokErrEOF

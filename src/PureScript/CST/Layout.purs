@@ -1,13 +1,15 @@
 module PureScript.CST.Layout where
-  
+
 import Prelude
 
 import Data.Array as Array
 import Data.Foldable (find)
+import Data.Lazy as Lazy
 import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..), snd, uncurry)
-import PureScript.CST.Types (SourceToken, Token(..), SourcePos)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), step)
+import PureScript.CST.Types (SourcePos, SourceToken, Token(..))
 
 type LayoutStack = List (Tuple SourcePos LayoutDelim)
 
@@ -34,7 +36,7 @@ data LayoutDelim
   | LytOf
   | LytDo
   | LytAdo
-  
+
 derive instance eqLayoutDelim :: Eq LayoutDelim
 derive instance ordLayoutDelim :: Ord LayoutDelim
 
@@ -47,13 +49,13 @@ isIndented = case _ of
   LytDo -> true
   LytAdo -> true
   _ -> false
-  
+
 isTopDecl :: SourcePos -> LayoutStack -> Boolean
 isTopDecl tokPos = case _ of
   Tuple lytPos LytWhere : Tuple _ LytRoot : Nil
     | tokPos.column == lytPos.column -> true
   _ -> false
-  
+
 lytToken :: SourcePos -> Token -> SourceToken
 lytToken pos value =
   { range: { start: pos, end: pos }
@@ -330,7 +332,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     where
     sepTok = lytToken tokPos TokLayoutSep
 
-  insertKwProperty k state = 
+  insertKwProperty k state =
     case state # insertDefault of
       Tuple (Tuple _ LytProperty : stk') acc' ->
         Tuple stk' acc'
@@ -346,13 +348,13 @@ insertLayout src@{ range, value: tok } nextPos stack =
   pushStack lytPos lyt (Tuple stk acc) =
     Tuple (Tuple lytPos lyt : stk) acc
 
-  popStack p state@(Tuple (Tuple _ lyt : stk') acc) 
+  popStack p state@(Tuple (Tuple _ lyt : stk') acc)
     | p lyt = Tuple stk' acc
   popStack _ state = state
 
   collapse p = uncurry go
     where
-    go (Tuple lytPos lyt : stk') acc 
+    go (Tuple lytPos lyt : stk') acc
       | p lytPos lyt =
           go stk'
             if isIndented lyt
@@ -375,3 +377,17 @@ insertLayout src@{ range, value: tok } nextPos stack =
 
   sepP lytPos =
     tokPos.column == lytPos.column && tokPos.line /= lytPos.line
+
+unwindLayout :: SourcePos -> TokenStream -> LayoutStack -> TokenStream
+unwindLayout pos eof = go
+  where
+  go stk = TokenStream $ Lazy.defer \_ -> case stk of
+    Nil -> step eof
+    Tuple _ lyt : tl ->
+      case lyt of
+        LytRoot ->
+          step eof
+        _ | isIndented lyt ->
+              TokenCons (lytToken pos TokLayoutEnd) pos (go tl)
+          | otherwise ->
+              step (go tl)
