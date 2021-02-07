@@ -29,15 +29,6 @@ import Text.Parsing.StringParser.CodeUnits (regex)
 import Text.Parsing.StringParser.CodeUnits as SPSCU
 import Text.Parsing.StringParser.Combinators (optionMaybe)
 
-bump :: Int -> Int -> SourcePos -> SourcePos
-bump lines cols pos
-  | lines == 0 =
-      pos { column = pos.column + cols }
-  | otherwise =
-      { line: pos.line + lines
-      , column: cols
-      }
-
 lex :: String -> TokenStream
 lex = init <<< { str: _, pos: 0 }
   where
@@ -84,6 +75,15 @@ lex = init <<< { str: _, pos: 0 }
       <$> token
       <*> trailingComments
       <*> leadingComments
+
+bump :: Int -> Int -> SourcePos -> SourcePos
+bump lines cols pos
+  | lines == 0 =
+      pos { column = pos.column + cols }
+  | otherwise =
+      { line: pos.line + lines
+      , column: cols
+      }
 
 bumpToken :: SourcePos -> Token -> SourcePos
 bumpToken pos@{ line, column } = case _ of
@@ -287,6 +287,8 @@ token =
             TokDoubleColon Unicode
           "∀" ->
             TokForall Unicode
+          "=" ->
+            TokEquals
           _ ->
             TokOperator moduleName symbol
       Just _ ->
@@ -425,8 +427,8 @@ token =
 
   parseNumber = do
     intPart <- intPartRegex
-    fractionPart <- optionMaybe $ try (SPSCU.char '.' *> fractionPartRegex)
-    exponentPart <- optionMaybe $ try (SPSCU.char 'e' *> parseExponentPart)
+    fractionPart <- optionMaybe (SPSCU.char '.' *> fractionPartRegex)
+    exponentPart <- optionMaybe (SPSCU.char 'e' *> parseExponentPart)
     if isNothing fractionPart && isNothing exponentPart then
       case Int.fromString intPart of
         Just int ->

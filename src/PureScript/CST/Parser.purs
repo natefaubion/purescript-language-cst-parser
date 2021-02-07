@@ -4,7 +4,7 @@ import Prelude
 
 import Control.Alt ((<|>))
 import Control.Lazy (defer)
-import Control.Monad.Free (Free)
+import Control.Monad.Free (Free, runFree)
 import Control.Monad.State (gets, put)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
@@ -15,15 +15,20 @@ import Data.Foldable (foldl)
 import Data.Identity (Identity)
 import Data.Lazy as Lazy
 import Data.Maybe (Maybe(..), optional)
+import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..), uncurry)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..))
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
-import Text.Parsing.Parser (ParseState(..), ParserT, fail, failWithPosition)
+import PureScript.CST.Print (printToken)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), step)
+import PureScript.CST.Types (Binder(..), ClassFundep(..), Comment, DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), LineFeed, Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
+import Text.Parsing.Parser (ParseError, ParseState(..), ParserT, fail, failWithPosition, runParserT)
 import Text.Parsing.Parser as Parser
 import Text.Parsing.Parser.Combinators (lookAhead, try)
 import Text.Parsing.Parser.Pos (Position(..))
 
 type Parser = ParserT TokenStream (Free Identity)
+
+runParser :: forall a. TokenStream -> Parser a -> Either ParseError a
+runParser src = runFree unwrap <<< runParserT src
 
 expectMap :: forall a. (SourceToken -> Maybe a) -> Parser a
 expectMap pred = do
@@ -39,12 +44,24 @@ expectMap pred = do
       case pred tok of
         Nothing ->
           failWithPosition
-            -- ("Unexpected " <> printTokenName tok)
-            "Unexpected token"
+            ("Unexpected token " <> printToken tok.value)
             (Position tok.range.start)
         Just a -> do
           put $ ParseState next (Position nextPos) true
           pure a
+
+eof :: Parser (Array (Comment LineFeed))
+eof = do
+  stream <- gets \(ParseState stream _ _) -> stream
+  case step stream of
+    TokenError pos error _ ->
+      Parser.failWithPosition
+        "Failed to parse token"
+          (Position pos)
+    TokenEOF _ trailing ->
+      pure trailing
+    TokenCons _ _ _ ->
+      Parser.fail "Expected EOF"
 
 expect :: (Token -> Boolean) -> Parser SourceToken
 expect pred = expectMap \tok ->
@@ -118,7 +135,8 @@ parseModule = do
   exports <- optional $ parens $ separated (token TokComma) parseExport
   where_ <- expect (isKeyword "where")
   { left: imports, right: decls } <- map separate $ layout $ Left <$> parseImportDecl <|> Right <$> parseDecl
-  pure $ Module { ann: unit, keyword, name, exports, where: where_, imports, decls, trailingComments: [] }
+  trailingComments <- eof
+  pure $ Module { ann: unit, keyword, name, exports, where: where_, imports, decls, trailingComments }
 
 parseExport :: Parser (Export Unit)
 parseExport =
@@ -737,7 +755,7 @@ parseLetBindingName name = do
 
 parseGuarded :: Parser SourceToken -> Parser (Guarded Unit)
 parseGuarded sepParser =
-  Unconditional <$> token TokEquals <*> parseWhere
+  Unconditional <$> sepParser <*> parseWhere
     <|> Guarded <$> many1 parseGuardedExpr
   where
   parseGuardedExpr :: Parser (GuardedExpr Unit)
