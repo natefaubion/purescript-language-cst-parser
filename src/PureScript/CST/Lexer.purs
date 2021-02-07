@@ -24,7 +24,7 @@ import PureScript.CST.Errors (TokenError(..))
 import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, insertLayout, unwindLayout)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, step)
 import PureScript.CST.Types (Comment(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
-import Text.Parsing.StringParser (ParseError(..), Parser(..), PosString, fail)
+import Text.Parsing.StringParser (ParseError(..), Parser(..), PosString, fail, try)
 import Text.Parsing.StringParser.CodeUnits (regex)
 import Text.Parsing.StringParser.CodeUnits as SPSCU
 import Text.Parsing.StringParser.Combinators (optionMaybe)
@@ -72,7 +72,7 @@ lex = init <<< { str: _, pos: 0 }
               , value: result.token
               }
             Tuple nextStack toks = insertLayout posToken nextStart stack
-          TokenCons posToken nextStart
+          step
             $ snd
             $ consTokens toks
             $ Tuple nextStart
@@ -237,17 +237,14 @@ token =
     <|> TokComma <$ SPSCU.char ','
   where
   parseModuleName init = do
-    mbNext <- optionMaybe (parseProper <* SPSCU.char '.')
+    mbNext <- optionMaybe $ try (parseProper <* SPSCU.char '.')
     case mbNext of
-      Nothing
-        | Array.null init ->
-            fail "Expected module name."
-        | otherwise -> do
-            let moduleName = toModuleName init
-            parseLower moduleName
-              <|> parseUpper moduleName
-              <|> parseOperator moduleName
-              <|> parseSymbol moduleName
+      Nothing -> do
+        let moduleName = toModuleName init
+        parseLower moduleName
+          <|> parseUpper moduleName
+          <|> parseOperator moduleName
+          <|> parseSymbol moduleName
       Just next ->
         parseModuleName (Array.snoc init next)
 
@@ -428,8 +425,8 @@ token =
 
   parseNumber = do
     intPart <- intPartRegex
-    fractionPart <- optionMaybe (SPSCU.char '.' *> fractionPartRegex)
-    exponentPart <- optionMaybe (SPSCU.char 'e' *> parseExponentPart)
+    fractionPart <- optionMaybe $ try (SPSCU.char '.' *> fractionPartRegex)
+    exponentPart <- optionMaybe $ try (SPSCU.char 'e' *> parseExponentPart)
     if isNothing fractionPart && isNothing exponentPart then
       case Int.fromString intPart of
         Just int ->

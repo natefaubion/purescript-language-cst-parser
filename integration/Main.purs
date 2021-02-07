@@ -23,9 +23,9 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
+import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.TokenStream (TokenStream)
-import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (Module)
 import Text.Parsing.Parser (ParseError)
 import Text.Parsing.Parser as Parsing
@@ -105,7 +105,7 @@ parseModuleFromFile path = do
   contents <- readTextFile UTF8 path
   pure
     { path
-    , parsed: parse (TokenStream.lex contents)
+    , parsed: parse (lex contents)
     }
 
 parse :: TokenStream -> Either ParseError (Module Unit)
