@@ -6,14 +6,19 @@ import Control.Monad.Free (runFree)
 import Control.Parallel (parTraverse)
 import Data.Array (foldMap)
 import Data.Array as Array
+import Data.DateTime.Instant (unInstant)
 import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
 import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
-import Data.Newtype (unwrap)
+import Data.Maybe (Maybe)
+import Data.Monoid.Additive (Additive(..))
+import Data.Newtype (over2, un, unwrap)
+import Data.NonEmpty (NonEmpty(..), foldl1)
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
+import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -21,6 +26,7 @@ import Effect.Aff.AVar as AVar
 import Effect.Class (liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
+import Effect.Now (now)
 import Node.ChildProcess as Exec
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
@@ -59,14 +65,14 @@ main = runAff_ (either throwException mempty) do
     pure result
 
   let
-    partition = moduleResults # partitionMap \{ path, parsed } -> case parsed of
-      Left parseError -> Left { path, parseError }
-      Right parsedModule -> Right { path, parsedModule }
+    partition = moduleResults # partitionMap \{ path, parsed, duration } -> case parsed of
+      Left parseError -> Left { path, parseError, duration }
+      Right parsedModule -> Right { path, parsedModule, duration }
 
   liftEffect $ forWithIndex_ partition.left \ix failed -> do
     let
       message = Array.intercalate "\n"
-        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> "] ----"
+        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> ". Failed in "<> show failed.duration <> " ] ----"
         , "Failed to parse module at path:"
         , failed.path
         , ""
@@ -86,6 +92,16 @@ main = runAff_ (either throwException mempty) do
       ]
 
   liftEffect $ Console.log successMessage
+
+  let
+    mbFailureStats = getDurationStats partition.left
+    mbSuccessStats = getDurationStats partition.right
+
+  for_ mbFailureStats \durationStats ->
+    liftEffect $ Console.log $ displayDurationStats durationStats "Failure Case"
+
+  for_ mbSuccessStats \durationStats ->
+    liftEffect $ Console.log $ displayDurationStats durationStats "Success Case"
 
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
@@ -116,16 +132,61 @@ getPursFiles depth root = do
 type ModuleResult =
   { path :: FilePath
   , parsed :: Either ParseError (Module Unit)
+  , duration :: Milliseconds
   }
 
 parseModuleFromFile :: FilePath -> Aff ModuleResult
 parseModuleFromFile path = do
   contents <- readTextFile UTF8 path
+  before <- unInstant <$> liftEffect now
+  let parsed = parse (lex contents)
+  after <- unInstant <$> liftEffect now
   pure
     { path
-    , parsed: parse (lex contents)
+    , parsed
+    , duration: over2 Milliseconds sub after before
     }
 
 parse :: TokenStream -> Either ParseError (Module Unit)
 parse tokenStream =
   runFree unwrap $ Parsing.runParserT tokenStream Parser.parseModule
+
+type DurationStats r =
+  { minDuration :: { path :: FilePath, duration :: Milliseconds | r }
+  , maxDuration :: { path :: FilePath, duration :: Milliseconds | r }
+  , mean :: Milliseconds
+  }
+
+getDurationStats :: forall r. Array { path :: FilePath, duration :: Milliseconds | r } -> Maybe (DurationStats r)
+getDurationStats res = do
+  { head, tail } <- Array.uncons res
+  let results = NonEmpty head tail
+  pure
+    { minDuration: minDuration results
+    , maxDuration: maxDuration results
+    , mean: mean results
+    }
+  where
+  minDuration = foldl1 (\res1 res2 -> if res1.duration < res2.duration then res1 else res2)
+
+  maxDuration = foldl1 (\res1 res2 -> if res1.duration > res2.duration then res1 else res2)
+
+  mean results =
+    results
+      # foldMap (\{ duration: Milliseconds duration } -> Additive { duration, total: 1.0 })
+      # un Additive
+      # \{ duration, total } -> Milliseconds (duration / total)
+
+displayDurationStats :: forall r. DurationStats r -> String -> String
+displayDurationStats { minDuration, maxDuration, mean } title =
+  Array.intercalate "\n"
+    [ ""
+    , "---- [ " <> title <> " Timing Information ] ----"
+    , "Fastest Parse: " <> show minDuration.duration <> " at path:"
+    , minDuration.path
+    , ""
+    , "Slowest Parse: " <> show maxDuration.duration <> " at path:"
+    , maxDuration.path
+    , ""
+    , "Mean Parse: " <> show mean
+    ]
