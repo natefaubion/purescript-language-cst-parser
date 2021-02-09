@@ -40,7 +40,7 @@ main = runAff_ (either throwException mempty) do
   let installCmd = "cd " <> tmpPath <> "; spago -x spago.dhall ls packages | cut -f 1 -d \' \' | xargs spago install"
 
   _ <- liftEffect $ Exec.execSync installCmd Exec.defaultExecSyncOptions
-  pursFiles <- getPursFiles (tmpPath <> "/.spago")
+  pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
   moduleResults <- for pursFiles parseModuleFromFile
 
   let
@@ -82,13 +82,16 @@ defaultSpagoDhall = Array.intercalate "\n"
   , "}"
   ]
 
-getPursFiles :: FilePath -> Aff (Array FilePath)
-getPursFiles root = do
+getPursFiles :: Int -> FilePath -> Aff (Array FilePath)
+getPursFiles depth root = do
   readdir root >>= foldMap \file -> do
     let path = root <> "/" <> file
     stats <- stat path
     if FS.isDirectory stats then
-      getPursFiles path
+      if depth == 2 && file /= "src" then do
+        pure []
+      else
+        getPursFiles (depth + 1) path
     else if Regex.test pursRegex path then
       pure [ path ]
     else pure []
