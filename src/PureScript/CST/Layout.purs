@@ -319,7 +319,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     Tuple lytPos LytTopDecl : stk' | sepP lytPos ->
       Tuple stk' acc # insertToken sepTok
     -- LytTopDeclHead can be closed by a separator if there is no `where`.
-    Tuple lytPos LytTopDeclHead : tail: stk' | sepP lytPos ->
+    Tuple lytPos LytTopDeclHead : stk' | sepP lytPos ->
       Tuple stk' acc # insertToken sepTok
     Tuple lytPos lyt : _ | indentSepP lytPos lyt ->
       case lyt of

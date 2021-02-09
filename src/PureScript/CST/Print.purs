@@ -29,12 +29,12 @@ printTokenWithOption option = case _ of
     "]"
   TokLeftArrow style ->
     case style of
-      ASCII -> "->"
-      Unicode -> "→"
-  TokRightArrow style ->
-    case style of
       ASCII -> "<-"
       Unicode -> "←"
+  TokRightArrow style ->
+    case style of
+      ASCII -> "->"
+      Unicode -> "→"
   TokRightFatArrow style ->
     case style of
       ASCII -> "=>"

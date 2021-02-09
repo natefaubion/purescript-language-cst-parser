@@ -142,12 +142,13 @@ parseModule = do
 
 parseExport :: Parser (Export Unit)
 parseExport =
-  ExportValue unit <$> parseIdent
-    <|> ExportOp unit <$> parseSymbol
-    <|> ExportType unit <$> parseProper <*> optional parseDataMembers
-    <|> ExportTypeOp unit <$> expect (isKeyword "type") <*> parseSymbol
+  ExportTypeOp unit <$> expect (isKeyword "type") <*> parseSymbol
     <|> ExportClass unit <$> expect (isKeyword "class") <*> parseProper
-    <|> ExportKind unit <$> expect (isKeyword "kind") <*> parseProper
+    <|> ExportModule unit <$> expect (isKeyword "module") <*> parseModuleName
+    <|> try (ExportKind unit <$> expect (isKeyword "kind") <*> parseProper)
+    <|> ExportOp unit <$> parseSymbol
+    <|> ExportValue unit <$> parseIdent
+    <|> ExportType unit <$> parseProper <*> optional parseDataMembers
 
 parseImportDecl :: Parser (ImportDecl Unit)
 parseImportDecl = do
@@ -159,12 +160,12 @@ parseImportDecl = do
 
 parseImport :: Parser (Import Unit)
 parseImport =
-  ImportValue unit <$> parseIdent
-    <|> ImportOp unit <$> parseSymbol
+  ImportOp unit <$> parseSymbol
     <|> ImportType unit <$> parseProper <*> optional parseDataMembers
     <|> ImportTypeOp unit <$> expect (isKeyword "type") <*> parseSymbol
     <|> ImportClass unit <$> expect (isKeyword "class") <*> parseProper
     <|> ImportKind unit <$> expect (isKeyword "kind") <*> parseProper
+    <|> ImportValue unit <$> parseIdent
 
 parseDataMembers :: Parser (DataMembers Unit)
 parseDataMembers =
@@ -269,7 +270,7 @@ parseDeclClassSignature keyword = do
 
 parseDeclClass1 :: SourceToken -> Parser (Declaration Unit)
 parseDeclClass1 keyword = do
-  super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> expect (isKeyOperator "<=")
+  super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> expect (isKeyOperator "<=" || isKeyOperator "⇐")
   name <- parseProper
   vars <- Array.many parseTypeVarBinding
   fundeps <- optional $ Tuple <$> token TokPipe <*> separated (token TokComma) parseFundep
@@ -298,7 +299,7 @@ parseDeclInstanceChain = DeclInstanceChain unit <$> separated parseInstanceChain
 
 parseInstanceChainSeparator :: Parser SourceToken
 parseInstanceChainSeparator =
-  try (token TokLayoutSep *> expect (isKeyword "else"))
+  expect (isKeyword "else")
     <* optional (token TokLayoutSep)
 
 parseInstance :: Parser (Instance Unit)
@@ -379,7 +380,7 @@ parseForeignData = do
   pure $ ForeignData keyword $ Labeled { label, separator, value }
 
 parseForeignKind :: Parser (Foreign Unit)
-parseForeignKind = ForeignKind <$> expect (isKeyword "kind") <*> parseProper
+parseForeignKind = try $ ForeignKind <$> expect (isKeyword "kind") <*> parseProper
 
 parseForeignValue :: Parser (Foreign Unit)
 parseForeignValue = do
@@ -403,8 +404,8 @@ parseFixityKeyword =
 
 parseFixityOp :: Parser FixityOp
 parseFixityOp =
-  FixityValue <$> parseQualifiedIdentOrProper <*> expect (isKeyword "as") <*> parseOperator
-    <|> FixityType <$> expect (isKeyword "type") <*> parseQualifiedProper <*> expect (isKeyword "as") <*> parseOperator
+  FixityType <$> expect (isKeyword "type") <*> parseQualifiedProper <*> expect (isKeyword "as") <*> parseOperator
+    <|> FixityValue <$> parseQualifiedIdentOrProper <*> expect (isKeyword "as") <*> parseOperator
 
 parseType :: Parser (Type Unit)
 parseType = defer \_ -> do
@@ -457,6 +458,7 @@ parseTypeParens :: Parser (Type Unit)
 parseTypeParens = do
   open <- token TokLeftParen
   parseRowParen open
+    <|> parseRowTailParen open
     <|> parseKindedVar open
     <|> parseTypeParen open
     <|> parseEmptyRow open
@@ -477,6 +479,16 @@ parseRowParen open = do
             }
         , tail
         }
+    , close
+    }
+
+parseRowTailParen :: SourceToken -> Parser (Type Unit)
+parseRowTailParen open = do
+  tail <- Tuple <$> token TokPipe <*> parseType
+  close <- token TokRightParen
+  pure $ TypeRow unit $ Wrapped
+    { open
+    , value: Row { labels: Nothing, tail: Just tail }
     , close
     }
 
@@ -620,7 +632,7 @@ parseLambda :: Parser (Expr Unit)
 parseLambda = do
   symbol <- token TokBackslash
   binders <- many1 parseBinderAtom
-  arrow <- expect isLeftArrow
+  arrow <- expect isRightArrow
   body <- parseExpr
   pure $ ExprLambda unit { symbol, binders, arrow, body }
 
@@ -629,18 +641,39 @@ parseCase = do
   keyword <- expect (isKeyword "case")
   head <- separated (token TokComma) parseExpr
   of_ <- expect (isKeyword "of")
-  branches <- layoutNonEmpty $ Tuple <$> separated (token TokComma) parseBinder1 <*> parseGuarded (expect isRightArrow)
+  branches <- try parseBadSingleCaseBranch <|> parseCaseBranches
   pure $ ExprCase unit { keyword, head, of: of_, branches }
+
+parseCaseBranches :: Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseCaseBranches = defer \_ ->
+  layoutNonEmpty $ Tuple <$> separated (token TokComma) parseBinder1 <*> parseGuarded (expect isRightArrow)
+
+parseBadSingleCaseBranch :: Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseBadSingleCaseBranch = do
+  binder <- token TokLayoutStart *> parseBinder1
+  parseBadSingleCaseWhere binder
+    <|> parseBadSingleCaseGuarded binder
+
+parseBadSingleCaseWhere :: Binder Unit ->Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseBadSingleCaseWhere binder = do
+  arrow <- expect isRightArrow
+  body <- token TokLayoutEnd *> parseWhere
+  pure $ NonEmptyArray.singleton $ Tuple (Separated { head: binder, tail: [] }) $ Unconditional arrow body
+
+parseBadSingleCaseGuarded :: Binder Unit ->Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseBadSingleCaseGuarded binder = do
+  body <- token TokLayoutEnd *> parseGuarded (expect isRightArrow)
+  pure $ NonEmptyArray.singleton $ Tuple (Separated { head: binder, tail: [] }) body
 
 parseDo :: Parser (Expr Unit)
 parseDo = do
-  keyword <- expect (isKeyword "do")
+  keyword <- expect (isQualifiedKeyword "do")
   statements <- layoutNonEmpty parseDoStatement
   pure $ ExprDo unit { keyword, statements }
 
 parseAdo :: Parser (Expr Unit)
 parseAdo = do
-  keyword <- expect (isKeyword "ado")
+  keyword <- expect (isQualifiedKeyword "ado")
   statements <- layout parseDoStatement
   in_ <- expect (isKeyword "in")
   result <- parseExpr
@@ -668,7 +701,7 @@ parseRecordUpdates :: Expr Unit -> SourceToken -> Parser (Expr Unit)
 parseRecordUpdates expr open = do
   _ <- lookAhead $ parseLabel *> (token TokEquals <|> token TokLeftBrace)
   value <- separated (token TokComma) parseRecordUpdate
-  close <- token TokLeftBrace
+  close <- token TokRightBrace
   pure $ ExprRecordUpdate unit expr $ Wrapped { open, value, close }
 
 parseRecordUpdate :: Parser (RecordUpdate Unit)
@@ -709,10 +742,11 @@ parseExprAtom = defer \_ ->
     <|> ExprHole unit <$> parseHole
     <|> uncurry (ExprString unit) <$> parseString
     <|> uncurry (ExprChar unit) <$> parseChar
+    <|> uncurry (ExprBoolean unit) <$> parseBoolean
     <|> uncurry (ExprInt unit) <$> parseInt
     <|> uncurry (ExprNumber unit) <$> parseNumber
     <|> ExprArray unit <$> delimited TokLeftSquare TokRightSquare TokComma parseExpr
-    <|> ExprRecord unit <$> delimited TokLeftSquare TokRightSquare TokComma (parseRecordLabeled parseExpr)
+    <|> ExprRecord unit <$> delimited TokLeftBrace TokRightBrace TokComma (parseRecordLabeled parseExpr)
     <|> ExprParens unit <$> parens parseExpr
 
 parseRecordLabeled :: forall a. Parser a -> Parser (RecordLabeled a)
@@ -734,7 +768,7 @@ parseDoStatement = defer \_ ->
 
 parseLetBinding :: Parser (LetBinding Unit)
 parseLetBinding = defer \_ ->
-  parseIdentBinding
+  try parseIdentBinding
     <|> LetBindingPattern unit <$> parseBinder1 <*> token TokEquals <*> parseWhere
 
 parseIdentBinding :: Parser (LetBinding Unit)
@@ -771,7 +805,7 @@ parseGuarded sepParser =
   parsePatternGuard :: Parser (PatternGuard Unit)
   parsePatternGuard =
     { binder: _, expr: _ }
-      <$> optional (Tuple <$> parseBinder <*> expect isLeftArrow)
+      <$> optional (try (Tuple <$> parseBinder <*> expect isLeftArrow))
       <*> parseExpr
 
 parseWhere :: Parser (Where Unit)
@@ -793,7 +827,18 @@ parseBinder1 = defer \_ ->
     <*> Array.many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
 
 parseBinder2 :: Parser (Binder Unit)
-parseBinder2 = defer \_ -> do
+parseBinder2 = defer \_ ->
+  parseBinderNegative
+    <|> parseBinderConstructor
+
+parseBinderNegative :: Parser (Binder Unit)
+parseBinderNegative = defer \_ -> do
+  negative <- expect (isKeyOperator "-")
+  uncurry (BinderInt unit (Just negative)) <$> parseInt
+    <|> uncurry (BinderNumber unit (Just negative)) <$> parseNumber
+
+parseBinderConstructor :: Parser (Binder Unit)
+parseBinderConstructor = defer \_ -> do
   binder <- parseBinderAtom
   apps <- Array.many parseBinderAtom
   case binder, apps of
@@ -812,14 +857,12 @@ parseBinderAtom = defer \_ ->
     <|> BinderWildcard unit <$> token TokUnderscore
     <|> uncurry (BinderString unit) <$> parseString
     <|> uncurry (BinderChar unit) <$> parseChar
-    <|> (uncurry <<< BinderInt unit) <$> negative <*> parseInt
-    <|> (uncurry <<< BinderNumber unit) <$> negative <*> parseNumber
+    <|> uncurry (BinderBoolean unit) <$> parseBoolean
+    <|> uncurry (BinderInt unit Nothing) <$> parseInt
+    <|> uncurry (BinderNumber unit Nothing) <$>  parseNumber
     <|> BinderArray unit <$> delimited TokLeftSquare TokRightSquare TokComma parseBinder
     <|> BinderRecord unit <$> delimited TokLeftBrace TokRightBrace TokComma (parseRecordLabeled parseBinder)
     <|> BinderParens unit <$> parens parseBinder
-  where
-  negative :: Parser (Maybe SourceToken)
-  negative = optional (expect (isKeyOperator "-"))
 
 parseIdentBinder :: Parser (Binder Unit)
 parseIdentBinder = do
@@ -931,6 +974,14 @@ parseNumber = expectMap case _ of
     Just $ Tuple tok number
   _ -> Nothing
 
+parseBoolean :: Parser (Tuple SourceToken Boolean)
+parseBoolean = expectMap case _ of
+  tok@{ value: TokLowerName Nothing "true" } ->
+    Just $ Tuple tok true
+  tok@{ value: TokLowerName Nothing "false" } ->
+    Just $ Tuple tok false
+  _ -> Nothing
+
 many1 :: forall a. Parser a -> Parser (NonEmptyArray a)
 many1 parser =
   NonEmptyArray.cons'
@@ -970,6 +1021,11 @@ isSymbolArrow = case _ of
 isKeyword :: String -> Token -> Boolean
 isKeyword kw = case _ of
   TokLowerName Nothing name -> kw == name
+  _ -> false
+
+isQualifiedKeyword :: String -> Token -> Boolean
+isQualifiedKeyword kw = case _ of
+  TokLowerName _ name -> kw == name
   _ -> false
 
 isKeyOperator :: String -> Token -> Boolean

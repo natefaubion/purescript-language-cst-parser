@@ -50,8 +50,9 @@ lex = init <<< { str: _, pos: 0 }
     else do
       let Parser k = token'
       case k str of
-        Left { pos, error: ParseError error } ->
-          TokenError (bumpText startPos 0 (String.take pos str.str)) (TokErr error) Nothing
+        Left { pos, error: ParseError error } -> do
+          let errPos = bumpText startPos 0 (String.take (pos - str.pos) (String.drop str.pos str.str))
+          TokenError errPos (TokErr error) Nothing
         Right { result, suffix } -> do
           let
             endPos = bumpToken startPos result.token
@@ -205,7 +206,7 @@ trailingComments = Array.many $
 
 comment :: Parser String
 comment =
-  regex """\{-(-(?!\})|[^-]*)-\}"""
+  regex """\{-(-(?!\})|[^-]+)*-\}"""
     <|> regex """--[^\r\n]*"""
 
 spaceComment :: Parser Int
@@ -291,14 +292,19 @@ token =
             TokEquals
           "." ->
             TokDot
+          "\\" ->
+            TokBackslash
+          "|" ->
+            TokPipe
+          "@" ->
+            TokAt
           _ ->
             TokOperator moduleName symbol
       Just _ ->
-        -- TODO: Reject qualified keysymbols
         TokOperator moduleName symbol
 
   parseSymbol moduleName = do
-    symbol <- try (SPSCU.char '(' *> parseSymbolIdent) <* SPSCU.char ')'
+    symbol <- try (SPSCU.char '(' *> parseSymbolIdent <* SPSCU.char ')')
     pure $ case moduleName of
       Nothing ->
         case symbol of
@@ -307,14 +313,12 @@ token =
           "→" ->
             TokSymbolArrow Unicode
           _ ->
-            -- TODO: Reject keysymbols
-            TokSymbolName moduleName symbol
-      Just _ ->
-        -- TODO: Reject qualified keysymbols
+            TokSymbolName Nothing symbol
+      _ ->
         TokSymbolName moduleName symbol
 
   parseHole = do
-    ident <- SPSCU.char '?' *> try (parseIdent <|> parseProper)
+    ident <- try $ SPSCU.char '?' *> (parseIdent <|> parseProper)
     pure $ TokHole ident
 
   parseProper = do
@@ -381,8 +385,8 @@ token =
     parseRawString <|> parseString
 
   parseRawString = do
-    string <- SPSCU.string "\"\"\"" *> rawStringCharsRegex <* SPSCU.string "\"\"\""
-    pure $ TokRawString string
+    string <- rawStringCharsRegex
+    pure $ TokRawString $ SCU.dropRight 3 $ SCU.drop 3 string
 
   parseString = do
     parts <- SPSCU.char '"' *> Array.many parseStringPart <* SPSCU.char '"'
@@ -413,7 +417,7 @@ token =
     SPSCU.regex """[^"\\]+"""
 
   rawStringCharsRegex =
-    SPSCU.regex """"{0,2}([^"]+"{1,2})*[^"]*"""
+    SPSCU.regex "\"\"\"\"{0,2}([^\"]+\"{1,2})*[^\"]*\"\"\""
 
   parseNumericLiteral =
     parseHexInt <|> parseNumber
@@ -428,7 +432,7 @@ token =
 
   parseNumber = do
     intPart <- intPartRegex
-    fractionPart <- optionMaybe (SPSCU.char '.' *> fractionPartRegex)
+    fractionPart <- optionMaybe (try (SPSCU.char '.' *> fractionPartRegex))
     exponentPart <- optionMaybe (SPSCU.char 'e' *> parseExponentPart)
     if isNothing fractionPart && isNothing exponentPart then
       case Int.fromString intPart of
