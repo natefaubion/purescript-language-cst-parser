@@ -3,18 +3,21 @@ module Main where
 import Prelude
 
 import Control.Monad.Free (runFree)
+import Control.Parallel (parTraverse)
 import Data.Array (foldMap)
 import Data.Array as Array
 import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
+import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Newtype (unwrap)
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
-import Data.Traversable (for)
 import Effect (Effect)
+import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
+import Effect.Aff.AVar as AVar
 import Effect.Class (liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
@@ -35,13 +38,25 @@ foreign import tmpdir :: String -> Effect String
 main :: Effect Unit
 main = runAff_ (either throwException mempty) do
   tmpPath <- liftEffect $ tmpdir "cst-integration-"
+
   writeTextFile UTF8 (tmpPath <> "/spago.dhall") defaultSpagoDhall
 
   let installCmd = "cd " <> tmpPath <> "; spago -x spago.dhall ls packages | cut -f 1 -d \' \' | xargs spago install"
 
   _ <- liftEffect $ Exec.execSync installCmd Exec.defaultExecSyncOptions
+
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
-  moduleResults <- for pursFiles parseModuleFromFile
+
+  block <- AVar.empty
+
+  for_ (Array.range 1 10) \_ -> do
+    liftEffect $ EffectAVar.put unit block mempty
+
+  moduleResults <- flip parTraverse pursFiles \file -> do
+    AVar.take block
+    result <- parseModuleFromFile file
+    _ <- liftEffect $ EffectAVar.put unit block mempty
+    pure result
 
   let
     partition = moduleResults # partitionMap \{ path, parsed } -> case parsed of
