@@ -2,7 +2,6 @@ module Main where
 
 import Prelude
 
-import Control.Monad.Free (runFree)
 import Control.Parallel (parTraverse)
 import Data.Array (foldMap)
 import Data.Array as Array
@@ -13,7 +12,7 @@ import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Maybe (Maybe)
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (over2, un, unwrap)
+import Data.Newtype (over2, un)
 import Data.NonEmpty (NonEmpty(..), foldl1)
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
@@ -33,11 +32,10 @@ import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
 import PureScript.CST.Lexer (lex)
+import PureScript.CST.Parser (PositionedError, runParser')
 import PureScript.CST.Parser as Parser
 import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Module)
-import Text.Parsing.Parser (ParseError)
-import Text.Parsing.Parser as Parsing
 
 foreign import tmpdir :: String -> Effect String
 
@@ -131,7 +129,7 @@ getPursFiles depth root = do
 
 type ModuleResult =
   { path :: FilePath
-  , parsed :: Either ParseError (Module Unit)
+  , parsed :: Either PositionedError (Module Unit)
   , duration :: Milliseconds
   }
 
@@ -147,9 +145,9 @@ parseModuleFromFile path = do
     , duration: over2 Milliseconds sub after before
     }
 
-parse :: TokenStream -> Either ParseError (Module Unit)
+parse :: TokenStream -> Either PositionedError (Module Unit)
 parse tokenStream =
-  runFree unwrap $ Parsing.runParserT tokenStream Parser.parseModule
+  runParser' tokenStream Parser.parseModule
 
 type DurationStats r =
   { minDuration :: { path :: FilePath, duration :: Milliseconds | r }

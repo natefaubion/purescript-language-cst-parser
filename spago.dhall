@@ -2,6 +2,7 @@
 , dependencies =
   [ "arrays"
   , "console"
+  , "debug"
   , "effect"
   , "either"
   , "filterable"
@@ -9,9 +10,7 @@
   , "free"
   , "maybe"
   , "numbers"
-  , "parsing"
   , "psci-support"
-  , "string-parsers"
   , "strings"
   , "tuples"
   , "unicode"

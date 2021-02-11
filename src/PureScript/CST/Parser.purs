@@ -2,68 +2,179 @@ module PureScript.CST.Parser where
 
 import Prelude
 
-import Control.Alt ((<|>))
-import Control.Lazy (defer)
-import Control.Monad.Free (Free, runFree)
-import Control.Monad.State (gets, put)
+import Control.Alt (class Alt, alt)
+import Control.Lazy (class Lazy, defer)
+import Control.Monad.Free (Free, liftF, resume)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Compactable (separate)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Identity (Identity)
-import Data.Lazy as Lazy
-import Data.Maybe (Maybe(..), optional)
-import Data.Newtype (unwrap)
+import Data.Lazy as Z
+import Data.Maybe (Maybe(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
-import PureScript.CST.Print (TokenOption(..), printTokenWithOption)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), step)
-import PureScript.CST.Types (Binder(..), ClassFundep(..), Comment, DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), LineFeed, Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
-import Text.Parsing.Parser (ParseError, ParseState(..), ParserT, fail, failWithPosition, runParserT)
-import Text.Parsing.Parser as Parser
-import Text.Parsing.Parser.Combinators (lookAhead, try)
-import Text.Parsing.Parser.Pos (Position(..))
+import PureScript.CST.Print (printToken)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream, step)
+import PureScript.CST.Types (Binder(..), ClassFundep(..), Comment, DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), LineFeed, Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..), SourcePos)
 
-type Parser = ParserT TokenStream (Free Identity)
+newtype Parser a = Parser (Free ParserF a)
 
-runParser :: forall a. TokenStream -> Parser a -> Either ParseError a
-runParser src = runFree unwrap <<< runParserT src
+-- TODO
+type ParseError = String
+
+type PositionedError =
+  { position :: SourcePos
+  , error :: ParseError
+  }
+
+data ParserF a
+  = Take (SourceToken -> Either ParseError a)
+  | Eof (Array (Comment LineFeed) -> a)
+  | Fail SourcePos ParseError
+  | Alt (Parser a) (Parser a)
+  | Try (Parser a)
+  | LookAhead (Parser a)
+  | Defer (Z.Lazy (Parser a))
+
+derive instance functorParserF :: Functor ParserF
+
+derive newtype instance functorParser :: Functor Parser
+derive newtype instance applyParser :: Apply Parser
+derive newtype instance applicativeParser :: Applicative Parser
+derive newtype instance bindParser :: Bind Parser
+derive newtype instance monadParser :: Monad Parser
+
+instance altParser :: Alt Parser where
+  alt a b = Parser (liftF (Alt a b))
+
+instance lazyParser :: Lazy (Parser a) where
+  defer = Parser <<< liftF <<< Defer <<< Z.defer
+
+infixr 3 alt as <|>
+
+fail :: forall a. SourcePos -> ParseError -> Parser a
+fail pos err = Parser (liftF (Fail pos err))
+
+try :: forall a. Parser a -> Parser a
+try = Parser <<< liftF <<< Try
+
+lookAhead :: forall a. Parser a -> Parser a
+lookAhead = Parser <<< liftF <<< LookAhead
+
+many :: forall a. Parser a -> Parser (Array a)
+many p = go []
+  where
+  go acc = optional p >>= case _ of
+    Just more ->
+      go (Array.snoc acc more)
+    Nothing ->
+      pure acc
+
+optional :: forall a. Parser a -> Parser (Maybe a)
+optional p = Just <$> p <|> pure Nothing
+
+data ParserResult a
+  = ParseFail SourcePos ParseError (Maybe TokenStream)
+  | ParseSucc a SourcePos TokenStream
+
+data ParserStack a
+  = PopAlt SourcePos TokenStream (Parser (Free ParserF a)) (ParserStack a)
+  | PopNil
+
+runParser' :: forall a. TokenStream -> Parser a -> Either PositionedError a
+runParser' stream parser =
+  case runParser { line: 0, column: 0 } stream parser of
+    ParseFail position error _ ->
+      Left { position, error }
+    ParseSucc res _ _ ->
+      Right res
+
+runParser :: forall a. SourcePos -> TokenStream -> Parser a -> ParserResult a
+runParser = \pos stream (Parser parser) -> go PopNil pos stream parser
+  where
+  go :: ParserStack a -> SourcePos -> TokenStream -> Free ParserF a -> ParserResult a
+  go stack pos stream parser = case resume parser of
+    Right a ->
+      ParseSucc a pos stream
+    Left ps ->
+      case ps of
+        Take k ->
+          case step stream of
+            TokenError errPos _ errStream ->
+              ParseFail errPos "Failed to parse token" errStream
+            TokenEOF errPos _ ->
+              case stack of
+                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
+                  go prevStack prevPos prevStream (join prevParser)
+                _ ->
+                  ParseFail errPos "Unexpected EOF" Nothing
+            TokenCons tok nextPos nextStream ->
+              case k tok of
+                Left err ->
+                  case stack of
+                    PopAlt prevPos prevStream (Parser prevParser) prevStack ->
+                      go prevStack prevPos prevStream (join prevParser)
+                    _ ->
+                      ParseFail pos err (Just nextStream)
+                Right nextParser ->
+                  go PopNil nextPos nextStream nextParser
+        Eof k ->
+          case step stream of
+            TokenError errPos _ errStream ->
+              ParseFail errPos "Failed to parse token" errStream
+            TokenEOF eofPos comments ->
+              go stack eofPos stream (k comments)
+            TokenCons tok _ _ ->
+              case stack of
+                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
+                  go prevStack prevPos prevStream (join prevParser)
+                _ ->
+                  ParseFail tok.range.start "Expected EOF" (Just stream)
+        Fail errPos err ->
+          case stack of
+            PopAlt prevPos prevStream (Parser prevParser) prevStack ->
+              go prevStack prevPos prevStream (join prevParser)
+            _ ->
+              ParseFail errPos err (Just stream)
+        Alt (Parser a) b ->
+          go (PopAlt pos stream b stack) pos stream (join a)
+        Try p ->
+          case runParser pos stream p of
+            ParseFail errPos err nextStream ->
+              case stack of
+                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
+                  go prevStack prevPos prevStream (join prevParser)
+                _ ->
+                  ParseFail errPos err nextStream
+            ParseSucc nextParser nextPos nextStream ->
+              go stack nextPos nextStream nextParser
+        LookAhead p ->
+          case runParser pos stream p of
+            ParseFail errPos err nextStream ->
+              case stack of
+                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
+                  go prevStack prevPos prevStream (join prevParser)
+                _ ->
+                  ParseFail errPos err nextStream
+            ParseSucc nextParser _ _ ->
+              go stack pos stream nextParser
+        Defer z -> do
+          let (Parser p) = Z.force z
+          go stack pos stream (join p)
 
 expectMap :: forall a. (SourceToken -> Maybe a) -> Parser a
-expectMap pred = do
-  TokenStream stream <- gets \(ParseState stream _ _) -> stream
-  case Lazy.force stream of
-    TokenError pos error _ ->
-      Parser.failWithPosition
-        "Failed to parse token"
-          (Position pos)
-    TokenEOF _ _  ->
-      Parser.fail "Unexpected EOF"
-    TokenCons tok nextPos next ->
-      case pred tok of
-        Nothing ->
-          failWithPosition
-            ("Unexpected token " <> printTokenWithOption ShowLayout tok.value) -- TODOD: Better token name printer for errors
-            (Position tok.range.start)
-        Just a -> do
-          put $ ParseState next (Position nextPos) true
-          pure a
+expectMap k = Parser $ liftF $ Take \tok ->
+  case k tok of
+    Just a ->
+      Right a
+    Nothing ->
+      Left $ "Unexpected token " <> printToken tok.value
 
 eof :: Parser (Array (Comment LineFeed))
-eof = do
-  stream <- gets \(ParseState stream _ _) -> stream
-  case step stream of
-    TokenError pos error _ ->
-      Parser.failWithPosition
-        "Failed to parse token"
-          (Position pos)
-    TokenEOF _ trailing ->
-      pure trailing
-    TokenCons _ _ _ ->
-      Parser.fail "Expected EOF"
+eof = Parser (liftF (Eof identity))
 
 expect :: (Token -> Boolean) -> Parser SourceToken
 expect pred = expectMap \tok ->
@@ -79,28 +190,28 @@ wrapped openTok closeTok valueParser = do
   close <- token closeTok
   pure $ Wrapped { open, value, close }
 
-delimited :: forall a. Token -> Token -> Token -> Parser a -> Parser (Delimited a)
+delimited :: forall a. Token -> Token -> Token-> Parser a -> Parser (Delimited a)
 delimited openTok closeTok sepTok valueParser = do
   open <- token openTok
   parseEmpty open
     <|> parseNonEmpty open
   where
   parseEmpty :: SourceToken -> Parser (Delimited a)
-  parseEmpty open = do
+  parseEmpty open = ado
     close <- token closeTok
-    pure $ Wrapped { open, value: Nothing, close }
+    in Wrapped { open, value: Nothing, close }
 
   parseNonEmpty :: SourceToken -> Parser (Delimited a)
-  parseNonEmpty open = do
+  parseNonEmpty open = ado
     value <- separated (token sepTok) valueParser
     close <- token closeTok
-    pure $ Wrapped { open, value: Just value, close }
+    in Wrapped { open, value: Just value, close }
 
 separated :: forall a. Parser SourceToken -> Parser a -> Parser (Separated a)
-separated sepParser valueParser = do
+separated sepParser valueParser = ado
   head <- valueParser
-  tail <- Array.many (Tuple <$> sepParser <*> valueParser)
-  pure $ Separated { head, tail }
+  tail <- many (Tuple <$> sepParser <*> valueParser)
+  in Separated { head, tail }
 
 parens :: forall a. Parser a -> Parser (Wrapped a)
 parens = wrapped TokLeftParen TokRightParen
@@ -112,23 +223,18 @@ squares :: forall a. Parser a -> Parser (Wrapped a)
 squares = wrapped TokLeftSquare TokRightSquare
 
 layoutNonEmpty :: forall a. Parser a -> Parser (NonEmptyArray a)
-layoutNonEmpty valueParser = do
-  _ <- token TokLayoutStart
-  head <- valueParser
-  tail <- Array.many (token TokLayoutSep *> valueParser)
-  _ <- token TokLayoutEnd
-  pure $ NonEmptyArray.cons' head tail
+layoutNonEmpty valueParser = ado
+  head <- token TokLayoutStart *> valueParser
+  tail <- many (token TokLayoutSep *> valueParser) <* token TokLayoutEnd
+  in NonEmptyArray.cons' head tail
 
 layout :: forall a. Parser a -> Parser (Array a)
-layout valueParser = do
-  _ <- token TokLayoutStart
-  values <- (go =<< valueParser) <|> pure []
-  _ <- token TokLayoutEnd
-  pure $ values
+layout valueParser =
+  token TokLayoutStart *> values <* token TokLayoutEnd
   where
-  go head = do
-    tail <- Array.many (token TokLayoutSep *> valueParser)
-    pure $ Array.cons head tail
+  values = (go =<< valueParser) <|> pure []
+  tail = many (token TokLayoutSep *> valueParser)
+  go head = Array.cons head <$> tail
 
 parseModule :: Parser (Module Unit)
 parseModule = do
@@ -199,7 +305,7 @@ parseDeclData = do
 
 parseDeclData1 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
 parseDeclData1 keyword name = do
-  vars <- Array.many parseTypeVarBinding
+  vars <- many parseTypeVarBinding
   ctors <- optional (Tuple <$> token TokEquals <*> separated (token TokPipe) parseDataCtor)
   pure $ DeclData unit { keyword, name, vars } ctors
 
@@ -207,7 +313,7 @@ parseDataCtor :: Parser (DataCtor Unit)
 parseDataCtor =
   { ann: unit, name: _, fields: _ }
     <$> parseProper
-    <*> Array.many parseTypeAtom
+    <*> many parseTypeAtom
 
 parseDeclNewtype :: Parser (Declaration Unit)
 parseDeclNewtype = do
@@ -218,7 +324,7 @@ parseDeclNewtype = do
 
 parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
 parseDeclNewtype1 keyword name = do
-  vars <- Array.many parseTypeVarBinding
+  vars <- many parseTypeVarBinding
   tok <- token TokEquals
   wrapper <- parseProper
   body <- parseTypeAtom
@@ -238,7 +344,7 @@ parseDeclType1 keyword = do
 
 parseDeclType2 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
 parseDeclType2 keyword name = do
-  vars <- Array.many parseTypeVarBinding
+  vars <- many parseTypeVarBinding
   tok <- token TokEquals
   body <- parseType
   pure $ DeclType unit { keyword, name, vars } tok body
@@ -272,7 +378,7 @@ parseDeclClass1 :: SourceToken -> Parser (Declaration Unit)
 parseDeclClass1 keyword = do
   super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> expect (isKeyOperator "<=" || isKeyOperator "⇐")
   name <- parseProper
-  vars <- Array.many parseTypeVarBinding
+  vars <- many parseTypeVarBinding
   fundeps <- optional $ Tuple <$> token TokPipe <*> separated (token TokComma) parseFundep
   members <- optional $ Tuple <$> expect (isKeyword "where") <*> layoutNonEmpty parseClassMember
   pure $ DeclClass unit { keyword, super, name, vars, fundeps } members
@@ -309,7 +415,7 @@ parseInstance = do
   separator <- expect isDoubleColon
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> expect isRightFatArrow
   className <- parseQualifiedProper
-  types <- Array.many parseTypeAtom
+  types <- many parseTypeAtom
   body <- optional $ Tuple <$> expect (isKeyword "where") <*> layoutNonEmpty parseInstanceBinding
   pure $ Instance
     { head: { keyword, name, separator, constraints, className, types }
@@ -330,7 +436,7 @@ parseInstanceBindingSignature label = do
 
 parseInstanceBindingName :: Name Ident -> Parser (InstanceBinding Unit)
 parseInstanceBindingName name = do
-  binders <- Array.many parseBinderAtom
+  binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
   pure $ InstanceBindingName unit { name, binders, guarded }
 
@@ -343,7 +449,7 @@ parseDeclDerive = do
   separator <- expect isDoubleColon
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> expect isRightFatArrow
   className <- parseQualifiedProper
-  types <- Array.many parseTypeAtom
+  types <- many parseTypeAtom
   pure $ DeclDerive unit derive_ newtype_ { keyword, name, separator, constraints, className, types }
 
 parseDeclValue :: Parser (Declaration Unit)
@@ -360,7 +466,7 @@ parseDeclSignature label = do
 
 parseDeclValue1 :: Name Ident -> Parser (Declaration Unit)
 parseDeclValue1 name = do
-  binders <- Array.many parseBinderAtom
+  binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
   pure $ DeclValue unit { name, binders, guarded }
 
@@ -429,7 +535,7 @@ parseType3 :: Parser (Type Unit)
 parseType3 = defer \_ -> do
   foldl (\a (Tuple op b) -> TypeOp unit a op b)
     <$> parseType4
-    <*> Array.many (Tuple <$> parseQualifiedOperator <*> parseType4)
+    <*> many (Tuple <$> parseQualifiedOperator <*> parseType4)
 
 parseType4 :: Parser (Type Unit)
 parseType4 = defer \_ ->
@@ -440,7 +546,7 @@ parseType5 :: Parser (Type Unit)
 parseType5 = defer \_ ->
   foldl (TypeApp unit)
     <$> parseTypeAtom
-    <*> Array.many parseTypeAtom
+    <*> many parseTypeAtom
 
 parseTypeAtom :: Parser (Type Unit)
 parseTypeAtom = defer \_ ->
@@ -467,7 +573,7 @@ parseRowParen :: SourceToken -> Parser (Type Unit)
 parseRowParen open = do
   Tuple label separator <- try $ Tuple <$> parseLabel <*> expect isDoubleColon
   value <- parseType
-  rest <- Array.many (Tuple <$> token TokComma <*> parseRowLabel)
+  rest <- many (Tuple <$> token TokComma <*> parseRowLabel)
   tail <- optional $ Tuple <$> token TokPipe <*> parseType
   close <- token TokRightParen
   pure $ TypeRow unit $ Wrapped
@@ -558,16 +664,16 @@ parseExpr = defer \_ -> do
     <|> pure expr
 
 parseExpr1 :: Parser (Expr Unit)
-parseExpr1 = defer \_ -> do
+parseExpr1 = defer \_ ->
   foldl (uncurry <<< ExprOp unit)
     <$> parseExpr2
-    <*> Array.many (Tuple <$> parseQualifiedOperator <*> parseExpr2)
+    <*> many (Tuple <$> parseQualifiedOperator <*> parseExpr2)
 
 parseExpr2 :: Parser (Expr Unit)
 parseExpr2 = defer \_ ->
   foldl (uncurry <<< ExprInfix unit)
     <$> parseExpr3
-    <*> Array.many (Tuple <$> parseTickExpr <*> parseExpr)
+    <*> many (Tuple <$> parseTickExpr <*> parseExpr)
 
 parseTickExpr :: Parser (Wrapped (Expr Unit))
 parseTickExpr = do
@@ -577,10 +683,10 @@ parseTickExpr = do
   pure $ Wrapped { open, value, close }
 
 parseTickExpr1 :: Parser (Expr Unit)
-parseTickExpr1 = defer \_ -> do
+parseTickExpr1 = defer \_ ->
   foldl (uncurry <<< ExprOp unit)
     <$> parseExpr3
-    <*> Array.many (Tuple <$> parseQualifiedOperator <*> parseExpr3)
+    <*> many (Tuple <$> parseQualifiedOperator <*> parseExpr3)
 
 parseExpr3 :: Parser (Expr Unit)
 parseExpr3 = defer \_ -> do
@@ -591,7 +697,7 @@ parseExpr4 :: Parser (Expr Unit)
 parseExpr4 =
   foldl makeApp
     <$> parseExpr5
-    <*> Array.many parseExpr5
+    <*> many parseExpr5
   where
   makeApp :: Expr Unit -> Expr Unit -> Expr Unit
   makeApp fn = case _ of
@@ -755,7 +861,7 @@ parseRecordLabeled valueParser =
     <|> RecordPun <$> parseIdent
   where
   parseRecordField :: Parser (RecordLabeled a)
-  parseRecordField = defer \_ ->
+  parseRecordField =
     uncurry RecordField
       <$> try (Tuple <$> parseLabel <*> expect (isKeyOperator ":"))
       <*> valueParser
@@ -785,7 +891,7 @@ parseLetBindingSignature label = do
 
 parseLetBindingName :: Name Ident -> Parser (LetBinding Unit)
 parseLetBindingName name = do
-  binders <- Array.many parseBinderAtom
+  binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
   pure $ LetBindingName unit { name, binders, guarded }
 
@@ -824,7 +930,7 @@ parseBinder1 :: Parser (Binder Unit)
 parseBinder1 = defer \_ ->
   foldl (\a (Tuple op b) -> BinderOp unit a op b)
     <$> parseBinder2
-    <*> Array.many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
+    <*> many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
 
 parseBinder2 :: Parser (Binder Unit)
 parseBinder2 = defer \_ ->
@@ -832,7 +938,7 @@ parseBinder2 = defer \_ ->
     <|> parseBinderConstructor
 
 parseBinderNegative :: Parser (Binder Unit)
-parseBinderNegative = defer \_ -> do
+parseBinderNegative =  do
   negative <- expect (isKeyOperator "-")
   uncurry (BinderInt unit (Just negative)) <$> parseInt
     <|> uncurry (BinderNumber unit (Just negative)) <$> parseNumber
@@ -840,7 +946,7 @@ parseBinderNegative = defer \_ -> do
 parseBinderConstructor :: Parser (Binder Unit)
 parseBinderConstructor = defer \_ -> do
   binder <- parseBinderAtom
-  apps <- Array.many parseBinderAtom
+  apps <- many parseBinderAtom
   case binder, apps of
     _, [] ->
       pure binder
@@ -848,7 +954,7 @@ parseBinderConstructor = defer \_ -> do
       pure $ BinderConstructor unit name apps
     _, _ ->
       -- TODO
-      fail "Not a constructor"
+      fail { line: 0, column: 0 } "Not a constructor"
 
 parseBinderAtom :: Parser (Binder Unit)
 parseBinderAtom = defer \_ ->
@@ -986,7 +1092,7 @@ many1 :: forall a. Parser a -> Parser (NonEmptyArray a)
 many1 parser =
   NonEmptyArray.cons'
     <$> parser
-    <*> Array.many parser
+    <*> many parser
 
 isDoubleColon :: Token -> Boolean
 isDoubleColon = case _ of

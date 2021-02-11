@@ -2,12 +2,12 @@ module PureScript.CST.Lexer where
 
 import Prelude
 
-import Control.Alt ((<|>))
+import Control.Alt (class Alt, (<|>))
 import Data.Array (fold, foldMap, foldl)
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Char as Char
 import Data.Char.Unicode as Unicode
-import Data.Either (Either(..))
 import Data.Int (hexadecimal)
 import Data.Int as Int
 import Data.Lazy as Lazy
@@ -18,42 +18,171 @@ import Data.Number as Number
 import Data.String (Pattern(..), Replacement(..))
 import Data.String as String
 import Data.String.CodeUnits as SCU
+import Data.String.Regex as Regex
+import Data.String.Regex.Flags (noFlags)
+import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith)
 import PureScript.CST.Errors (TokenError(..))
 import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, insertLayout, unwindLayout)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, step)
 import PureScript.CST.Types (Comment(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
-import Text.Parsing.StringParser (ParseError(..), Parser(..), PosString, fail, try)
-import Text.Parsing.StringParser.CodeUnits (regex)
-import Text.Parsing.StringParser.CodeUnits as SPSCU
-import Text.Parsing.StringParser.Combinators (optionMaybe)
+
+data LexResult e a
+  = LexFail e String
+  | LexSucc a String
+
+newtype Lex e a = Lex (String -> LexResult e a)
+
+instance functorLex :: Functor (Lex e) where
+  map f (Lex k) = Lex \str ->
+    case k str of
+      LexFail a b -> LexFail a b
+      LexSucc a b -> LexSucc (f a) b
+
+instance applyLex :: Apply (Lex e) where
+  apply (Lex k1) (Lex k2) = Lex \str ->
+    case k1 str of
+      LexFail a b -> LexFail a b
+      LexSucc f str' ->
+        case k2 str' of
+          LexFail a b -> LexFail a b
+          LexSucc x str'' ->
+            LexSucc (f x) str''
+
+instance applicativeLex :: Applicative (Lex e) where
+  pure = Lex <<< LexSucc
+
+instance bindLex :: Bind (Lex e) where
+  bind (Lex k1) k = Lex \str ->
+    case k1 str of
+      LexFail a b -> LexFail a b
+      LexSucc a str' -> do
+        let (Lex k2) = k a
+        k2 str'
+
+instance altLex :: Alt (Lex e) where
+  alt (Lex k1) (Lex k2) = Lex \str ->
+    case k1 str of
+      LexFail a str'
+        | SCU.length str == SCU.length str' ->
+            k2 str
+        | otherwise ->
+            LexFail a str'
+      LexSucc a b ->
+        LexSucc a b
+
+try :: forall e a. Lex e a -> Lex e a
+try (Lex k) = Lex \str ->
+  case k str of
+    LexFail a _ -> LexFail a str
+    LexSucc a b -> LexSucc a b
+
+regex :: forall e. e -> String -> Lex e String
+regex err regexStr = Lex \str ->
+  case Regex.match matchRegex str of
+    Just groups
+      | Just match <- NonEmptyArray.head groups ->
+          LexSucc match (SCU.drop (SCU.length match) str)
+    _ ->
+      LexFail err str
+  where
+  matchRegex = unsafeRegex ("^(?:" <> regexStr <> ")") noFlags
+
+string :: forall e. e -> String -> Lex e String
+string err match = Lex \str ->
+  if SCU.take (SCU.length match) str == match then
+    LexSucc match (SCU.drop (SCU.length match) str)
+  else
+    LexFail err str
+
+string' :: forall a e. e -> a -> String -> Lex e a
+string' err res match = Lex \str ->
+  if SCU.take (SCU.length match) str == match then
+    LexSucc res (SCU.drop (SCU.length match) str)
+  else
+    LexFail err str
+
+char :: forall e. e -> Char -> Lex e Char
+char err match = Lex \str ->
+  if SCU.singleton match == SCU.take 1 str then
+    LexSucc match (SCU.drop 1 str)
+  else
+    LexFail err str
+
+char' :: forall e a. e -> a -> Char -> Lex e a
+char' err res match = Lex \str ->
+  if SCU.singleton match == SCU.take 1 str then
+    LexSucc res (SCU.drop 1 str)
+  else
+    LexFail err str
+
+optional :: forall e a. Lex e a -> Lex e (Maybe a)
+optional (Lex k) = Lex \str ->
+  case k str of
+    LexFail err str'
+        | SCU.length str == SCU.length str' ->
+            LexSucc Nothing str
+        | otherwise ->
+            LexFail err str'
+    LexSucc a b ->
+      LexSucc (Just a) b
+
+satisfy :: forall e. e -> (Char -> Boolean) -> Lex e Char
+satisfy err p = Lex \str ->
+  case SCU.charAt 0 str of
+    Just ch | p ch ->
+      LexSucc ch (SCU.drop 1 str)
+    _ ->
+      LexFail err str
+
+takeWhile :: forall e. (Char -> Boolean) -> Lex e String
+takeWhile p = Lex \str -> do
+  let res = SCU.takeWhile p str
+  LexSucc res (SCU.drop (SCU.length res) str)
+
+many :: forall e a. Lex e a -> Lex e (Array a)
+many (Lex k) = Lex \str -> do
+  let
+    go acc str' =
+      case k str' of
+        LexFail err str''
+          | SCU.length str' == SCU.length str'' ->
+              LexSucc acc str'
+          | otherwise ->
+              LexFail err str''
+        LexSucc a str'' ->
+          go (Array.snoc acc a) str''
+  go [] str
+
+fail :: forall a. String -> Lex TokenError a
+fail = Lex <<< LexFail <<< TokErr
 
 lex :: String -> TokenStream
-lex = init <<< { str: _, pos: 0 }
+lex = init
   where
-  init :: PosString -> TokenStream
+  init :: String -> TokenStream
   init str = TokenStream $ Lazy.defer \_ -> do
-    let Parser k = leadingComments
+    let (Lex k) = leadingComments
     case k str of
-      Left _ ->
+      LexFail _ _ ->
         unsafeCrashWith "Leading comments can't fail."
-      Right { result: leading, suffix } -> do
+      LexSucc leading suffix -> do
         let startPos = foldl bumpComment { line: 0, column: 0 } leading
         let stack = Tuple startPos LytRoot : Nil
         step $ go stack startPos leading suffix
 
-  go :: LayoutStack -> SourcePos -> Array (Comment LineFeed) -> PosString -> TokenStream
+  go :: LayoutStack -> SourcePos -> Array (Comment LineFeed) -> String -> TokenStream
   go stack startPos leading str = TokenStream $ Lazy.defer \_ ->
-    if str.pos == SCU.length str.str then
+    if str == "" then
       step $ unwindLayout startPos (TokenStream $ Lazy.defer \_ -> TokenEOF startPos leading) stack
     else do
-      let Parser k = token'
+      let (Lex k) = token'
       case k str of
-        Left { pos, error: ParseError error } -> do
-          let errPos = bumpText startPos 0 (String.take (pos - str.pos) (String.drop str.pos str.str))
-          TokenError errPos (TokErr error) Nothing
-        Right { result, suffix } -> do
+        LexFail error remaining -> do
+          let errPos = bumpText startPos 0 (SCU.take (SCU.length str - SCU.length remaining) str)
+          TokenError errPos error Nothing
+        LexSucc result suffix -> do
           let
             endPos = bumpToken startPos result.token
             nextStart = foldl bumpComment (foldl bumpComment endPos result.trailing) result.nextLeading
@@ -70,7 +199,7 @@ lex = init <<< { str: _, pos: 0 }
             $ Tuple nextStart
             $ go nextStack nextStart result.nextLeading suffix
 
-  token' :: Parser { token :: Token, trailing :: Array (Comment Void), nextLeading :: Array (Comment LineFeed) }
+  token' :: Lex TokenError { token :: Token, trailing :: Array (Comment Void), nextLeading :: Array (Comment LineFeed) }
   token' =
     { token: _, trailing: _, nextLeading: _ }
       <$> token
@@ -193,81 +322,78 @@ bumpComment pos@{ line, column } = case _ of
 qualLength :: Maybe ModuleName -> Int
 qualLength = maybe 0 (add 1 <<< String.length <<< unwrap)
 
-leadingComments :: Parser (Array (Comment LineFeed))
-leadingComments = Array.many $
+leadingComments :: Lex TokenError (Array (Comment LineFeed))
+leadingComments = many do
   Comment <$> comment
     <|> Space <$> spaceComment
     <|> Line <$> lineComment
 
-trailingComments :: Parser (Array (Comment Void))
-trailingComments = Array.many $
+trailingComments :: Lex TokenError (Array (Comment Void))
+trailingComments = many do
   Comment <$> comment
     <|> Space <$> spaceComment
 
-comment :: Parser String
+comment :: Lex TokenError String
 comment =
-  regex """\{-(-(?!\})|[^-]+)*-\}"""
-    <|> regex """--[^\r\n]*"""
+  regex (TokErr "block comment") """\{-(-(?!\})|[^-]+)*-\}"""
+    <|> regex (TokErr "line comment") """--[^\r\n]*"""
 
-spaceComment :: Parser Int
-spaceComment = SCU.length <$> SPSCU.regex " +"
+spaceComment :: Lex TokenError Int
+spaceComment = SCU.length <$> regex (TokErr "spaces") " +"
 
-lineComment :: Parser LineFeed
+lineComment :: Lex TokenError LineFeed
 lineComment =
-  LF <$ SPSCU.string "\n"
-    <|> CRLF <$ SPSCU.string "\r\n"
+  string' (TokErr "newline") LF "\n"
+    <|> string' (TokErr "newline") CRLF "\r\n"
 
-token :: Parser Token
+token :: Lex TokenError Token
 token =
   parseHole
-    <|> parseModuleName []
-    <|> parseLower Nothing
-    <|> parseUpper Nothing
-    <|> parseOperator Nothing
-    <|> parseSymbol Nothing
+    <|> parseModuleName
     <|> parseCharLiteral
     <|> parseStringLiteral
     <|> parseNumericLiteral
-    <|> TokLeftParen <$ SPSCU.char '('
-    <|> TokRightParen <$ SPSCU.char ')'
-    <|> TokLeftBrace <$ SPSCU.char '{'
-    <|> TokRightBrace <$ SPSCU.char '}'
-    <|> TokLeftSquare <$ SPSCU.char '['
-    <|> TokRightSquare <$ SPSCU.char ']'
-    <|> TokTick <$ SPSCU.char '`'
-    <|> TokComma <$ SPSCU.char ','
+    <|> tokenLeftParen
+    <|> tokenRightParen
+    <|> tokenLeftBrace
+    <|> tokenRightBrace
+    <|> tokenLeftSquare
+    <|> tokenRightSquare
+    <|> tokenTick
+    <|> tokenComma
   where
-  parseModuleName init = do
-    mbNext <- optionMaybe $ try (parseProper <* SPSCU.char '.')
-    case mbNext of
-      Nothing -> do
-        let moduleName = toModuleName init
-        parseLower moduleName
-          <|> parseUpper moduleName
-          <|> parseOperator moduleName
-          <|> parseSymbol moduleName
-      Just next ->
-        parseModuleName (Array.snoc init next)
+  parseModuleName = ado
+    parts <- many (try (parseProper <* charDot))
+    name <- parseName
+    in name (toModuleName parts)
 
-  parseLower moduleName = do
+  parseName :: Lex _ (Maybe ModuleName -> Token)
+  parseName =
+    parseLower
+      <|> parseUpper
+      <|> parseOperator
+      <|> parseSymbol
+
+  parseLower = ado
     ident <- parseIdent
-    pure $ case moduleName of
+    in case _ of
       Nothing ->
         case ident of
           "forall" ->
             TokForall ASCII
           _ ->
             TokLowerName Nothing ident
-      Just _ ->
+      moduleName ->
         TokLowerName moduleName ident
 
-  parseUpper moduleName = do
-    ident <- parseProper
-    pure $ TokUpperName moduleName ident
+  parseUpper :: Lex _ (Maybe ModuleName -> Token)
+  parseUpper =
+    flip TokUpperName <$> parseProper
 
-  parseOperator moduleName = do
+  parseOperator :: Lex _ (Maybe ModuleName -> Token)
+  parseOperator = ado
     symbol <- parseSymbolIdent
-    pure $ case moduleName of
+    in case _ of
       Nothing ->
         case symbol of
           "<-" ->
@@ -299,13 +425,14 @@ token =
           "@" ->
             TokAt
           _ ->
-            TokOperator moduleName symbol
-      Just _ ->
+            TokOperator Nothing symbol
+      moduleName ->
         TokOperator moduleName symbol
 
-  parseSymbol moduleName = do
-    symbol <- try (SPSCU.char '(' *> parseSymbolIdent <* SPSCU.char ')')
-    pure $ case moduleName of
+  parseSymbol :: Lex _ (Maybe ModuleName -> Token)
+  parseSymbol = ado
+    symbol <- try (tokenLeftParen *> parseSymbolIdent <* tokenRightParen)
+    in case _ of
       Nothing ->
         case symbol of
           "->" ->
@@ -314,34 +441,34 @@ token =
             TokSymbolArrow Unicode
           _ ->
             TokSymbolName Nothing symbol
-      _ ->
+      moduleName ->
         TokSymbolName moduleName symbol
 
-  parseHole = do
-    ident <- try $ SPSCU.char '?' *> (parseIdent <|> parseProper)
-    pure $ TokHole ident
+  parseHole = ado
+    ident <- try $ charQuestionMark *> (parseIdent <|> parseProper)
+    in TokHole ident
 
-  parseProper = do
-    head <- SPSCU.satisfy Unicode.isUpper
-    rest <- Array.many (SPSCU.satisfy isIdentChar)
-    pure $ SCU.fromCharArray $ Array.cons head rest
+  parseProper = ado
+    head <- satisfyUpper
+    rest <- takeWhile isIdentChar
+    in SCU.singleton head <> rest
 
-  parseIdent = do
-    head <- SPSCU.satisfy isIdentStart
-    rest <- Array.many (SPSCU.satisfy isIdentChar)
-    pure $ SCU.fromCharArray $ Array.cons head rest
+  parseIdent = ado
+    head <- satisfyIdentStart
+    rest <- takeWhile isIdentChar
+    in SCU.singleton head <> rest
 
-  parseSymbolIdent = do
-    head <- SPSCU.satisfy isSymbolChar
-    rest <- Array.many (SPSCU.satisfy isSymbolChar)
-    pure $ SCU.fromCharArray $ Array.cons head rest
+  parseSymbolIdent = ado
+    head <- satisfySymbol
+    rest <- takeWhile isSymbolChar
+    in SCU.singleton head <> rest
 
-  parseCharLiteral = do
-    { raw, char } <- SPSCU.char '\'' *> parseChar <* SPSCU.char '\''
-    pure $ TokChar raw char
+  parseCharLiteral = ado
+    res <- charSingleQuote *> parseChar <* charSingleQuote
+    in TokChar res.raw res.char
 
   parseChar = do
-    ch <- SPSCU.anyChar
+    ch <- charAny
     case ch of
       '\\' ->
         parseEscape
@@ -351,7 +478,7 @@ token =
         pure { raw: SCU.singleton ch, char: ch }
 
   parseEscape = do
-    ch <- SPSCU.anyChar
+    ch <- charAny
     case ch of
       't' ->
         pure { raw: "\\t", char: '\t' }
@@ -379,51 +506,51 @@ token =
         fail "Character escape out of range"
 
   hexEscapeRegex =
-    SPSCU.regex "[a-fA-F0-9]{1,6}"
+    regex (TokErr "hex") "[a-fA-F0-9]{1,6}"
 
   parseStringLiteral =
     parseRawString <|> parseString
 
-  parseRawString = do
-    string <- rawStringCharsRegex
-    pure $ TokRawString $ SCU.dropRight 3 $ SCU.drop 3 string
+  parseRawString = ado
+    str <- rawStringCharsRegex
+    in TokRawString $ SCU.dropRight 3 $ SCU.drop 3 str
 
-  parseString = do
-    parts <- SPSCU.char '"' *> Array.many parseStringPart <* SPSCU.char '"'
+  parseString = ado
+    parts <- charQuote *> many parseStringPart <* charQuote
     let { raw, string } = fold parts
-    pure $ TokString raw string
+    in TokString raw string
 
   parseStringPart =
     parseStringChars
       <|> parseStringSpaceEscape
       <|> parseStringEscape
 
-  parseStringEscape = do
-    { raw, char } <- SPSCU.char '\\' *> parseEscape
-    pure { raw, string: SCU.singleton char }
+  parseStringEscape = ado
+    res <- charBackslash *> parseEscape
+    in { raw: res.raw, string: SCU.singleton res.char }
 
-  parseStringChars = do
+  parseStringChars = ado
     raw <- stringCharsRegex
-    pure { raw, string: raw }
+    in { raw, string: raw }
 
-  parseStringSpaceEscape = do
+  parseStringSpaceEscape = ado
     raw <- stringSpaceEscapeRegex
-    pure { raw, string: "" }
+    in { raw, string: "" }
 
   stringSpaceEscapeRegex =
-    SPSCU.regex """\\[ \r\n]+\\"""
+    regex (TokErr "whitespace escape") """\\[ \r\n]+\\"""
 
   stringCharsRegex =
-    SPSCU.regex """[^"\\]+"""
+    regex (TokErr "string characters") """[^"\\]+"""
 
   rawStringCharsRegex =
-    SPSCU.regex "\"\"\"\"{0,2}([^\"]+\"{1,2})*[^\"]*\"\"\""
+    regex (TokErr "raw string characters") "\"\"\"\"{0,2}([^\"]+\"{1,2})*[^\"]*\"\"\""
 
   parseNumericLiteral =
     parseHexInt <|> parseNumber
 
   parseHexInt = do
-    raw <- SPSCU.string "0x" *> hexIntRegex
+    raw <- hexIntPrefix *> hexIntRegex
     case Int.fromStringAs hexadecimal raw of
       Just int ->
         pure $ TokInt ("0x" <> raw) int
@@ -432,8 +559,8 @@ token =
 
   parseNumber = do
     intPart <- intPartRegex
-    fractionPart <- optionMaybe (try (SPSCU.char '.' *> fractionPartRegex))
-    exponentPart <- optionMaybe (SPSCU.char 'e' *> parseExponentPart)
+    fractionPart <- optional (try (charDot *> fractionPartRegex))
+    exponentPart <- optional (charExponent *> parseExponentPart)
     if isNothing fractionPart && isNothing exponentPart then
       case Int.fromString intPart of
         Just int ->
@@ -452,26 +579,83 @@ token =
         Nothing ->
           fail "Number literal out of range"
 
-  parseExponentPart = do
-    sign <- optionMaybe parseExponentSign
+  parseExponentPart = ado
+    sign <- optional parseExponentSign
     exponent <- intPartRegex
-    pure { sign, exponent }
+    in { sign, exponent }
 
   parseExponentSign =
-    SPSCU.string "-"
-      <|> SPSCU.string "+"
+    string (TokErr "negative") "-"
+      <|> string (TokErr "positive") "+"
 
   intPartRegex =
-    SPSCU.regex """(0|[1-9][0-9_]*)"""
+    regex (TokErr "int part") """(0|[1-9][0-9_]*)"""
 
   fractionPartRegex =
-    SPSCU.regex """[0-9_]+"""
+    regex (TokErr "fraction part") """[0-9_]+"""
 
   hexIntRegex =
-    SPSCU.regex """[a-fA-F0-9]+"""
+    regex (TokErr "hex int") """[a-fA-F0-9]+"""
+
+  hexIntPrefix =
+    string (TokErr "hex int prefix") "0x"
 
   stripUnderscores =
     String.replaceAll (Pattern "_") (Replacement "")
+
+  charDot =
+    char (TokErr "dot") '.'
+
+  tokenLeftParen =
+    char' (TokErr "left paren") TokLeftParen '('
+
+  tokenRightParen =
+    char' (TokErr "right paren") TokRightParen ')'
+
+  tokenLeftBrace =
+    char' (TokErr "left brace") TokLeftBrace '{'
+
+  tokenRightBrace =
+    char' (TokErr "right brace") TokRightBrace '}'
+
+  tokenLeftSquare =
+    char' (TokErr "left square") TokLeftSquare '['
+
+  tokenRightSquare =
+    char' (TokErr "right square") TokRightSquare ']'
+
+  tokenTick =
+    char' (TokErr "backtick") TokTick '`'
+
+  tokenComma =
+    char' (TokErr "comma") TokComma ','
+
+  charQuestionMark =
+    char (TokErr "question mark") '?'
+
+  charSingleQuote =
+    char (TokErr "single quote") '\''
+
+  charQuote =
+    char (TokErr "quote") '"'
+
+  charBackslash =
+    char (TokErr "backslash") '\\'
+
+  charExponent =
+    char (TokErr "exponent") 'e'
+
+  charAny =
+   satisfy (TokErr "char") (const true)
+
+  satisfyUpper =
+    satisfy (TokErr "upper") Unicode.isUpper
+
+  satisfyIdentStart =
+    satisfy (TokErr "identifier start") isIdentStart
+
+  satisfySymbol =
+    satisfy (TokErr "symbol") isSymbolChar
 
 isSymbolChar :: Char -> Boolean
 isSymbolChar c =
