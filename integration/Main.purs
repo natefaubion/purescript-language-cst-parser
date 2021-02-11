@@ -32,8 +32,8 @@ import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
 import PureScript.CST.Lexer (lex)
-import PureScript.CST.Parser (PositionedError, runParser')
 import PureScript.CST.Parser as Parser
+import PureScript.CST.Parser.Monad (PositionedError, runParser)
 import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Module)
 
@@ -147,7 +147,7 @@ parseModuleFromFile path = do
 
 parse :: TokenStream -> Either PositionedError (Module Unit)
 parse tokenStream =
-  runParser' tokenStream Parser.parseModule
+  runParser tokenStream Parser.parseModule
 
 type DurationStats r =
   { minDuration :: { path :: FilePath, duration :: Milliseconds | r }

@@ -7,7 +7,6 @@
   , "either"
   , "filterable"
   , "foldable-traversable"
-  , "free"
   , "maybe"
   , "numbers"
   , "psci-support"

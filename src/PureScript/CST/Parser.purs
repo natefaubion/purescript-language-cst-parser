@@ -2,179 +2,31 @@ module PureScript.CST.Parser where
 
 import Prelude
 
-import Control.Alt (class Alt, alt)
-import Control.Lazy (class Lazy, defer)
-import Control.Monad.Free (Free, liftF, resume)
+import Control.Alt (alt)
+import Control.Lazy (defer)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Compactable (separate)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
+import PureScript.CST.Parser.Monad (Parser, eof, fail, lookAhead, many, optional, take, try)
 import PureScript.CST.Print (printToken)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream, step)
-import PureScript.CST.Types (Binder(..), ClassFundep(..), Comment, DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), LineFeed, Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..), SourcePos)
-
-newtype Parser a = Parser (Free ParserF a)
-
--- TODO
-type ParseError = String
-
-type PositionedError =
-  { position :: SourcePos
-  , error :: ParseError
-  }
-
-data ParserF a
-  = Take (SourceToken -> Either ParseError a)
-  | Eof (Array (Comment LineFeed) -> a)
-  | Fail SourcePos ParseError
-  | Alt (Parser a) (Parser a)
-  | Try (Parser a)
-  | LookAhead (Parser a)
-  | Defer (Z.Lazy (Parser a))
-
-derive instance functorParserF :: Functor ParserF
-
-derive newtype instance functorParser :: Functor Parser
-derive newtype instance applyParser :: Apply Parser
-derive newtype instance applicativeParser :: Applicative Parser
-derive newtype instance bindParser :: Bind Parser
-derive newtype instance monadParser :: Monad Parser
-
-instance altParser :: Alt Parser where
-  alt a b = Parser (liftF (Alt a b))
-
-instance lazyParser :: Lazy (Parser a) where
-  defer = Parser <<< liftF <<< Defer <<< Z.defer
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
 
 infixr 3 alt as <|>
 
-fail :: forall a. SourcePos -> ParseError -> Parser a
-fail pos err = Parser (liftF (Fail pos err))
-
-try :: forall a. Parser a -> Parser a
-try = Parser <<< liftF <<< Try
-
-lookAhead :: forall a. Parser a -> Parser a
-lookAhead = Parser <<< liftF <<< LookAhead
-
-many :: forall a. Parser a -> Parser (Array a)
-many p = go []
-  where
-  go acc = optional p >>= case _ of
-    Just more ->
-      go (Array.snoc acc more)
-    Nothing ->
-      pure acc
-
-optional :: forall a. Parser a -> Parser (Maybe a)
-optional p = Just <$> p <|> pure Nothing
-
-data ParserResult a
-  = ParseFail SourcePos ParseError (Maybe TokenStream)
-  | ParseSucc a SourcePos TokenStream
-
-data ParserStack a
-  = PopAlt SourcePos TokenStream (Parser (Free ParserF a)) (ParserStack a)
-  | PopNil
-
-runParser' :: forall a. TokenStream -> Parser a -> Either PositionedError a
-runParser' stream parser =
-  case runParser { line: 0, column: 0 } stream parser of
-    ParseFail position error _ ->
-      Left { position, error }
-    ParseSucc res _ _ ->
-      Right res
-
-runParser :: forall a. SourcePos -> TokenStream -> Parser a -> ParserResult a
-runParser = \pos stream (Parser parser) -> go PopNil pos stream parser
-  where
-  go :: ParserStack a -> SourcePos -> TokenStream -> Free ParserF a -> ParserResult a
-  go stack pos stream parser = case resume parser of
-    Right a ->
-      ParseSucc a pos stream
-    Left ps ->
-      case ps of
-        Take k ->
-          case step stream of
-            TokenError errPos _ errStream ->
-              ParseFail errPos "Failed to parse token" errStream
-            TokenEOF errPos _ ->
-              case stack of
-                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
-                  go prevStack prevPos prevStream (join prevParser)
-                _ ->
-                  ParseFail errPos "Unexpected EOF" Nothing
-            TokenCons tok nextPos nextStream ->
-              case k tok of
-                Left err ->
-                  case stack of
-                    PopAlt prevPos prevStream (Parser prevParser) prevStack ->
-                      go prevStack prevPos prevStream (join prevParser)
-                    _ ->
-                      ParseFail pos err (Just nextStream)
-                Right nextParser ->
-                  go PopNil nextPos nextStream nextParser
-        Eof k ->
-          case step stream of
-            TokenError errPos _ errStream ->
-              ParseFail errPos "Failed to parse token" errStream
-            TokenEOF eofPos comments ->
-              go stack eofPos stream (k comments)
-            TokenCons tok _ _ ->
-              case stack of
-                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
-                  go prevStack prevPos prevStream (join prevParser)
-                _ ->
-                  ParseFail tok.range.start "Expected EOF" (Just stream)
-        Fail errPos err ->
-          case stack of
-            PopAlt prevPos prevStream (Parser prevParser) prevStack ->
-              go prevStack prevPos prevStream (join prevParser)
-            _ ->
-              ParseFail errPos err (Just stream)
-        Alt (Parser a) b ->
-          go (PopAlt pos stream b stack) pos stream (join a)
-        Try p ->
-          case runParser pos stream p of
-            ParseFail errPos err nextStream ->
-              case stack of
-                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
-                  go prevStack prevPos prevStream (join prevParser)
-                _ ->
-                  ParseFail errPos err nextStream
-            ParseSucc nextParser nextPos nextStream ->
-              go stack nextPos nextStream nextParser
-        LookAhead p ->
-          case runParser pos stream p of
-            ParseFail errPos err nextStream ->
-              case stack of
-                PopAlt prevPos prevStream (Parser prevParser) prevStack ->
-                  go prevStack prevPos prevStream (join prevParser)
-                _ ->
-                  ParseFail errPos err nextStream
-            ParseSucc nextParser _ _ ->
-              go stack pos stream nextParser
-        Defer z -> do
-          let (Parser p) = Z.force z
-          go stack pos stream (join p)
-
 expectMap :: forall a. (SourceToken -> Maybe a) -> Parser a
-expectMap k = Parser $ liftF $ Take \tok ->
+expectMap k = take \tok ->
   case k tok of
     Just a ->
       Right a
     Nothing ->
       Left $ "Unexpected token " <> printToken tok.value
-
-eof :: Parser (Array (Comment LineFeed))
-eof = Parser (liftF (Eof identity))
 
 expect :: (Token -> Boolean) -> Parser SourceToken
 expect pred = expectMap \tok ->
