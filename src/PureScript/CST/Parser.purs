@@ -546,17 +546,10 @@ parseExpr3 = defer \_ -> do
     <|> parseExpr4
 
 parseExpr4 :: Parser (Expr Unit)
-parseExpr4 =
-  foldl makeApp
+parseExpr4 = defer \_ ->
+  foldl (ExprApp unit)
     <$> parseExpr5
     <*> many parseExpr5
-  where
-  makeApp :: Expr Unit -> Expr Unit -> Expr Unit
-  makeApp fn = case _ of
-    ExprApp _ lhs rhs ->
-      ExprApp unit (ExprApp unit fn lhs) rhs
-    other ->
-      ExprApp unit fn other
 
 parseExpr5 :: Parser (Expr Unit)
 parseExpr5 = defer \_ ->
@@ -640,24 +633,12 @@ parseAdo = do
 parseExpr6 :: Parser (Expr Unit)
 parseExpr6 = defer \_ -> do
   expr <- parseExpr7
-  parseRecordAppOrUpdate expr
+  parseRecordUpdates expr
     <|> pure expr
 
-parseRecordAppOrUpdate :: Expr Unit -> Parser (Expr Unit)
-parseRecordAppOrUpdate expr = do
-  open <- token TokLeftBrace
-  parseRecordUpdates expr open
-    <|> parseRecordApp expr open
-
-parseRecordApp :: Expr Unit -> SourceToken -> Parser (Expr Unit)
-parseRecordApp expr open = do
-  value <- optional $ separated (token TokComma) (parseRecordLabeled parseExpr)
-  close <- token TokRightBrace
-  pure $ ExprApp unit expr $ ExprRecord unit $ Wrapped { open, value, close }
-
-parseRecordUpdates :: Expr Unit -> SourceToken -> Parser (Expr Unit)
-parseRecordUpdates expr open = do
-  _ <- lookAhead $ parseLabel *> (token TokEquals <|> token TokLeftBrace)
+parseRecordUpdates :: Expr Unit -> Parser (Expr Unit)
+parseRecordUpdates expr = do
+  open <- try $ token TokLeftBrace <* lookAhead (parseLabel *> (token TokEquals <|> token TokLeftBrace))
   value <- separated (token TokComma) parseRecordUpdate
   close <- token TokRightBrace
   pure $ ExprRecordUpdate unit expr $ Wrapped { open, value, close }

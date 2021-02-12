@@ -144,102 +144,104 @@ optional p = Just <$> p <|> pure Nothing
 eof :: Parser (Array (Comment LineFeed))
 eof = Eof identity
 
-data ParserResult a
-  = ParseFail SourcePos ParseError (Maybe TokenStream)
-  | ParseSucc a SourcePos TokenStream
-
-data ParserStack a
-  = PopAlt SourcePos TokenStream (Parser a) (ParserStack a)
-  | PopNil
-
 runParser :: forall a. TokenStream -> Parser a -> Either PositionedError a
 runParser stream parser =
-  case runParser' { line: 0, column: 0 } stream parser of
-    ParseFail position error _ ->
+  case runParser' stream parser of
+    ParseFail error position _ _ ->
       Left { position, error }
-    ParseSucc res _ _ ->
+    ParseSucc res _ _ _ ->
       Right res
 
-runParser' :: forall a. SourcePos -> TokenStream -> Parser a -> ParserResult a
-runParser' = go PopNil
+data ParserResult a
+  = ParseFail ParseError SourcePos Boolean (Maybe TokenStream)
+  | ParseSucc a SourcePos Boolean TokenStream
+
+data ParserStack a
+  = StkNil
+  | StkAlt (ParserStack a) ParserState (Parser a)
+  | StkTry (ParserStack a) ParserState
+  | StkLookAhead (ParserStack a) ParserState
+  | StkBinds (ParserStack a) (ParserBinds a)
+
+type ParserBinds =
+  Queue ParserK UnsafeBoundValue
+
+type ParserState =
+  { consumed :: Boolean
+  , position :: SourcePos
+  , stream :: TokenStream
+  }
+
+runParser' :: forall a. TokenStream -> Parser a -> ParserResult a
+runParser' = \stream parser ->
+  (unsafeCoerce :: ParserResult UnsafeBoundValue -> ParserResult a) $
+    go StkNil
+      { consumed: false
+      , position: { line: 0, column: 0 }
+      , stream
+      }
+      (unsafeCoerce parser)
   where
-  go :: ParserStack a -> SourcePos -> TokenStream -> Parser a -> ParserResult a
-  go stack pos stream = case _ of
-    Pure a ->
-      ParseSucc a pos stream
-    Bind p queue ->
-      case runParser' pos stream p of
-        ParseFail errPos err errStream ->
-          case stack of
-            PopAlt prevPos prevStream prevParser prevStack ->
-              go prevStack prevPos prevStream prevParser
-            _ ->
-              ParseFail errPos err errStream
-        ParseSucc a nextPos nextStream ->
+  go :: ParserStack UnsafeBoundValue -> ParserState -> Parser UnsafeBoundValue -> ParserResult UnsafeBoundValue
+  go stack state = case _ of
+    Alt a b ->
+      go (StkAlt stack state b) (state { consumed = false }) a
+    Try a ->
+      go (StkTry stack state) state a
+    LookAhead a ->
+      go (StkLookAhead stack state) state a
+    Bind p binds ->
+      go (StkBinds stack binds) state p
+    p@(Pure a) ->
+      case stack of
+        StkNil ->
+          ParseSucc a state.position state.consumed state.stream
+        StkAlt prevStack _ _ ->
+          go prevStack state p
+        StkTry prevStack _ ->
+          go prevStack state p
+        StkLookAhead prevStack prevState ->
+          go prevStack prevState p
+        StkBinds prevStack queue ->
           case unconsView queue of
             UnconsDone (ParserK k) ->
-              go stack nextPos nextStream (k a)
-            UnconsMore (ParserK k) queue' ->
-              go stack nextPos nextStream (Bind (k a) queue')
+              go prevStack state (k a)
+            UnconsMore (ParserK k) nextQueue ->
+              go (StkBinds prevStack nextQueue) state (k a)
+    p@(Fail errPos err) ->
+      case stack of
+        StkNil ->
+          ParseFail err errPos state.consumed (Just state.stream)
+        StkAlt prevStack prevState prev ->
+          if state.consumed then
+            go prevStack state p
+          else
+            go prevStack prevState prev
+        StkTry prevStack prevState ->
+          go prevStack (state { consumed = prevState.consumed }) p
+        StkLookAhead prevStack prevState ->
+          go prevStack prevState p
+        StkBinds prevStack _ ->
+          go prevStack state p
     Take k ->
-      case TokenStream.step stream of
+      case TokenStream.step state.stream of
         TokenError errPos _ errStream ->
-          ParseFail errPos "Failed to parse token" errStream
+          ParseFail "Failed to parse token" errPos state.consumed errStream
         TokenEOF errPos _ ->
-          case stack of
-            PopAlt prevPos prevStream prevParser prevStack ->
-              go prevStack prevPos prevStream prevParser
-            _ ->
-              ParseFail errPos "Unexpected EOF" Nothing
+          go stack state (Fail errPos "Unexpected EOF")
         TokenCons tok nextPos nextStream ->
           case k tok of
             Left err ->
-              case stack of
-                PopAlt prevPos prevStream prevParser prevStack ->
-                  go prevStack prevPos prevStream prevParser
-                _ ->
-                  ParseFail pos err (Just nextStream)
+              go stack state (Fail tok.range.start err)
             Right a ->
-              ParseSucc a nextPos nextStream
+              go stack { consumed: true, position: nextPos, stream: nextStream } (Pure a)
     Eof k ->
-      case TokenStream.step stream of
+      case TokenStream.step state.stream of
         TokenError errPos _ errStream ->
-          ParseFail errPos "Failed to parse token" errStream
+          ParseFail "Failed to parse token" errPos state.consumed errStream
         TokenEOF eofPos comments ->
-          ParseSucc (k comments) eofPos stream
+          go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
         TokenCons tok _ _ ->
-          case stack of
-            PopAlt prevPos prevStream prevParser prevStack ->
-              go prevStack prevPos prevStream prevParser
-            _ ->
-              ParseFail tok.range.start "Expected EOF" (Just stream)
-    Fail errPos err ->
-      case stack of
-        PopAlt prevPos prevStream prevParser prevStack ->
-          go prevStack prevPos prevStream prevParser
-        _ ->
-          ParseFail errPos err (Just stream)
-    Alt a b ->
-      go (PopAlt pos stream b stack) pos stream a
-    Try p ->
-      case runParser' pos stream p of
-        err@(ParseFail _ _ _) ->
-          case stack of
-            PopAlt prevPos prevStream prevParser prevStack ->
-              go prevStack prevPos prevStream prevParser
-            _ ->
-              err
-        succ ->
-          succ
-    LookAhead p ->
-      case runParser' pos stream p of
-        err@(ParseFail _ _ _) ->
-          case stack of
-            PopAlt prevPos prevStream prevParser prevStack ->
-              go prevStack prevPos prevStream prevParser
-            _ ->
-              err
-        ParseSucc a _ _ ->
-          ParseSucc a pos stream
+          go stack state (Fail tok.range.start "Expected EOF")
     Defer z ->
-      go stack pos stream (Z.force z)
+      go stack state (Z.force z)
