@@ -73,7 +73,7 @@ data Token
   | TokLayoutStart
   | TokLayoutSep
   | TokLayoutEnd
-  
+
 derive instance eqToken :: Eq Token
 
 type SourceToken =
@@ -119,6 +119,8 @@ newtype Wrapped a = Wrapped
   , value :: a
   , close :: SourceToken
   }
+
+derive instance newtypeWrapped :: Newtype (Wrapped a) _
 
 newtype Separated a = Separated
   { head :: a
