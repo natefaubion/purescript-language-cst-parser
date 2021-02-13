@@ -52,10 +52,9 @@ main = runAff_ (either throwException mempty) do
   writeTextFile UTF8 (tmpPath <> "/spago.dhall") defaultSpagoDhall
 
   let execOpts = Exec.defaultExecSyncOptions { cwd = Just tmpPath }
-  pkgs <- liftEffect $ Exec.execSync "spago ls packages" execOpts
-  s <- liftEffect $ Buffer.toString UTF8 pkgs
+  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync "spago ls packages" execOpts
   let lines = Str.split (Str.Pattern "\n") s
-  let packages = Str.joinWith " " (map (String.takeWhile (\c -> c /= ' ')) lines)
+  let packages = Str.joinWith " " (String.takeWhile (_ /= ' ') <$> lines)
   _ <- liftEffect $ Exec.execSync ("spago install " <> packages) execOpts
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
