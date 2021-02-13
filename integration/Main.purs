@@ -5,15 +5,16 @@ import Prelude
 import Control.Parallel (parTraverse)
 import Data.Array (foldMap)
 import Data.Array as Array
-import Data.DateTime.Instant (unInstant)
 import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
 import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (over2, un)
-import Data.NonEmpty (NonEmpty(..), foldl1)
+import Data.Newtype (un)
+import Data.Number.Format as NF
+import Data.String as Str
+import Data.String.CodeUnits as String
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
@@ -25,12 +26,13 @@ import Effect.Aff.AVar as AVar
 import Effect.Class (liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
-import Effect.Now (now)
+import Node.Buffer as Buffer
 import Node.ChildProcess as Exec
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
+import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
@@ -39,15 +41,21 @@ import PureScript.CST.Types (Module)
 
 foreign import tmpdir :: String -> Effect String
 
+foreign import hrtime :: Effect { seconds :: Number, nanos :: Number }
+
+foreign import hrtimeDiff :: { seconds :: Number, nanos :: Number } -> Effect { seconds :: Number, nanos :: Number }
+
 main :: Effect Unit
 main = runAff_ (either throwException mempty) do
   tmpPath <- liftEffect $ tmpdir "cst-integration-"
 
   writeTextFile UTF8 (tmpPath <> "/spago.dhall") defaultSpagoDhall
 
-  let installCmd = "cd " <> tmpPath <> "; spago -x spago.dhall ls packages | cut -f 1 -d \' \' | xargs spago install"
-
-  _ <- liftEffect $ Exec.execSync installCmd Exec.defaultExecSyncOptions
+  let execOpts = Exec.defaultExecSyncOptions { cwd = Just tmpPath }
+  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync "spago ls packages" execOpts
+  let lines = Str.split (Str.Pattern "\n") s
+  let packages = Str.joinWith " " (String.takeWhile (_ /= ' ') <$> lines)
+  _ <- liftEffect $ Exec.execSync ("spago install " <> packages) execOpts
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
 
@@ -63,19 +71,17 @@ main = runAff_ (either throwException mempty) do
     pure result
 
   let
-    partition = moduleResults # partitionMap \{ path, parsed, duration } -> case parsed of
-      Left parseError -> Left { path, parseError, duration }
-      Right parsedModule -> Right { path, parsedModule, duration }
+    partition = moduleResults # partitionMap \{ path, parseError, duration } -> case parseError of
+      Just parseError' -> Left { path, parseError: parseError', duration }
+      Nothing-> Right { path, duration }
 
   liftEffect $ forWithIndex_ partition.left \ix failed -> do
     let
       message = Array.intercalate "\n"
-        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> ". Failed in "<> show failed.duration <> " ] ----"
-        , "Failed to parse module at path:"
-        , failed.path
+        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> ". Failed in "<> formatMs failed.duration <> " ] ----"
         , ""
-        , "With error:"
-        , show failed.parseError
+        , "  " <> failed.path <> ":" <> show (failed.parseError.position.line + 1) <> ":" <> show (failed.parseError.position.column + 1)
+        , "  " <> printParseError failed.parseError.error <> " at line " <> show (failed.parseError.position.line + 1) <> ", column " <> show (failed.parseError.position.column + 1)
         , ""
         ]
     Console.error message
@@ -90,16 +96,7 @@ main = runAff_ (either throwException mempty) do
       ]
 
   liftEffect $ Console.log successMessage
-
-  let
-    mbFailureStats = getDurationStats partition.left
-    mbSuccessStats = getDurationStats partition.right
-
-  for_ mbFailureStats \durationStats ->
-    liftEffect $ Console.log $ displayDurationStats durationStats "Failure Case"
-
-  for_ mbSuccessStats \durationStats ->
-    liftEffect $ Console.log $ displayDurationStats durationStats "Success Case"
+  liftEffect $ Console.log $ displayDurationStats (getDurationStats partition.right) "Success Case"
 
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
@@ -129,20 +126,21 @@ getPursFiles depth root = do
 
 type ModuleResult =
   { path :: FilePath
-  , parsed :: Either PositionedError (Module Unit)
+  , parseError :: Maybe PositionedError
   , duration :: Milliseconds
   }
 
 parseModuleFromFile :: FilePath -> Aff ModuleResult
 parseModuleFromFile path = do
   contents <- readTextFile UTF8 path
-  before <- unInstant <$> liftEffect now
+  before <- liftEffect hrtime
   let parsed = parse (lex contents)
-  after <- unInstant <$> liftEffect now
+  duration <- liftEffect $ hrtimeDiff before
+  let durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
   pure
     { path
-    , parsed
-    , duration: over2 Milliseconds sub after before
+    , parseError: either Just (const Nothing) parsed
+    , duration: durationMillis
     }
 
 parse :: TokenStream -> Either PositionedError (Module Unit)
@@ -150,27 +148,23 @@ parse tokenStream =
   runParser tokenStream Parser.parseModule
 
 type DurationStats r =
-  { minDuration :: { path :: FilePath, duration :: Milliseconds | r }
-  , maxDuration :: { path :: FilePath, duration :: Milliseconds | r }
+  { minDuration :: Array { path :: FilePath, duration :: Milliseconds | r }
+  , maxDuration :: Array { path :: FilePath, duration :: Milliseconds | r }
   , mean :: Milliseconds
   }
 
-getDurationStats :: forall r. Array { path :: FilePath, duration :: Milliseconds | r } -> Maybe (DurationStats r)
-getDurationStats res = do
-  { head, tail } <- Array.uncons res
-  let results = NonEmpty head tail
-  pure
-    { minDuration: minDuration results
-    , maxDuration: maxDuration results
-    , mean: mean results
-    }
+getDurationStats :: forall r. Array { path :: FilePath, duration :: Milliseconds | r } -> DurationStats r
+getDurationStats res =
+  { minDuration: Array.take 20 sorted
+  , maxDuration: Array.reverse (Array.takeEnd 20 sorted)
+  , mean
+  }
   where
-  minDuration = foldl1 (\res1 res2 -> if res1.duration < res2.duration then res1 else res2)
+  sorted =
+    Array.sortBy (comparing _.duration) res
 
-  maxDuration = foldl1 (\res1 res2 -> if res1.duration > res2.duration then res1 else res2)
-
-  mean results =
-    results
+  mean =
+    sorted
       # foldMap (\{ duration: Milliseconds duration } -> Additive { duration, total: 1.0 })
       # un Additive
       # \{ duration, total } -> Milliseconds (duration / total)
@@ -180,11 +174,18 @@ displayDurationStats { minDuration, maxDuration, mean } title =
   Array.intercalate "\n"
     [ ""
     , "---- [ " <> title <> " Timing Information ] ----"
-    , "Fastest Parse: " <> show minDuration.duration <> " at path:"
-    , minDuration.path
+    , "Fastest Parse Times:"
+    , Array.intercalate "\n" $ displayLine <$> minDuration
     , ""
-    , "Slowest Parse: " <> show maxDuration.duration <> " at path:"
-    , maxDuration.path
+    , "Slowest Parse Times:"
+    , Array.intercalate "\n" $ displayLine <$> maxDuration
     , ""
-    , "Mean Parse: " <> show mean
+    , "Mean Parse: " <> formatMs mean
     ]
+
+  where
+  displayLine { path, duration } =
+    String.takeRight 12 ("        " <> formatMs duration) <> "  " <> path
+
+formatMs :: Milliseconds -> String
+formatMs (Milliseconds ms) = NF.toStringWith (NF.fixed 3) ms <> "ms"

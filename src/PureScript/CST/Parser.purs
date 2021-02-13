@@ -14,8 +14,8 @@ import Data.Maybe (Maybe(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
+import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.Parser.Monad (Parser, eof, fail, lookAhead, many, optional, take, try)
-import PureScript.CST.Print (printToken)
 import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
 
 infixr 3 alt as <|>
@@ -26,7 +26,7 @@ expectMap k = take \tok ->
     Just a ->
       Right a
     Nothing ->
-      Left $ "Unexpected token " <> printToken tok.value
+      Left $ UnexpectedToken tok.value
 
 expect :: (Token -> Boolean) -> Parser SourceToken
 expect pred = expectMap \tok ->
@@ -787,7 +787,7 @@ parseBinderConstructor = defer \_ -> do
       pure $ BinderConstructor unit name apps
     _, _ ->
       -- TODO
-      fail { line: 0, column: 0 } "Not a constructor"
+      fail { line: 0, column: 0 } $ UnexpectedEof
 
 parseBinderAtom :: Parser (Binder Unit)
 parseBinderAtom = defer \_ ->
