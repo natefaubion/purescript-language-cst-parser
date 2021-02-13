@@ -12,7 +12,6 @@
   , "psci-support"
   , "strings"
   , "tuples"
-  , "unicode"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]
