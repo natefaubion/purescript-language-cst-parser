@@ -15,8 +15,18 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import PureScript.CST.Errors (ParseError(..))
-import PureScript.CST.Parser.Monad (Parser, eof, fail, lookAhead, many, optional, take, try)
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
+import PureScript.CST.Parser.Monad (Parser, PositionedError, Recovery(..), eof, fail, lookAhead, many, optional, recover, take, try)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
+import PureScript.CST.TokenStream as TokenStream
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..), SourcePos)
+
+type Recovered =
+  { error :: ParseError
+  , position :: SourcePos
+  , tokens :: Array SourceToken
+  }
+
+type Recoverable f a = f Recovered a
 
 infixr 3 alt as <|>
 
@@ -88,7 +98,7 @@ layout valueParser =
   tail = many (token TokLayoutSep *> valueParser)
   go head = Array.cons head <$> tail
 
-parseModule :: Parser (Module Unit)
+parseModule :: Parser (Recoverable Module Unit)
 parseModule = do
   keyword <- expect (isKeyword "module")
   name <- parseModuleName
@@ -130,8 +140,8 @@ parseDataMembers =
   DataAll unit <$> expect (isKeySymbol "..")
     <|> DataEnumerated unit <$> delimited TokLeftParen TokRightParen TokComma parseProper
 
-parseDecl :: Parser (Declaration Unit)
-parseDecl =
+parseDecl :: Parser (Recoverable Declaration Unit)
+parseDecl = recoverTopLevelLayout declError do
   parseDeclData
     <|> parseDeclNewtype
     <|> parseDeclType
@@ -141,21 +151,24 @@ parseDecl =
     <|> parseDeclValue
     <|> parseDeclForeign
     <|> parseDeclFixity
+  where
+  declError { error, position } tokens =
+    DeclError { error, position, tokens }
 
-parseDeclKindSignature :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclKindSignature :: SourceToken -> Name Proper -> Parser (Recoverable Declaration Unit)
 parseDeclKindSignature keyword label = do
   separator <- expect isDoubleColon
   value <- parseType
   pure $ DeclKindSignature unit keyword $ Labeled { label, separator, value }
 
-parseDeclData :: Parser (Declaration Unit)
+parseDeclData :: Parser (Recoverable Declaration Unit)
 parseDeclData = do
   keyword <- expect (isKeyword "data")
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclData1 keyword name
 
-parseDeclData1 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclData1 :: SourceToken -> Name Proper -> Parser (Recoverable Declaration Unit)
 parseDeclData1 keyword name = do
   vars <- many parseTypeVarBinding
   ctors <- optional (Tuple <$> token TokEquals <*> separated (token TokPipe) parseDataCtor)
@@ -167,14 +180,14 @@ parseDataCtor =
     <$> parseProper
     <*> many parseTypeAtom
 
-parseDeclNewtype :: Parser (Declaration Unit)
+parseDeclNewtype :: Parser (Recoverable Declaration Unit)
 parseDeclNewtype = do
   keyword <- expect (isKeyword "newtype")
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclNewtype1 keyword name
 
-parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Recoverable Declaration Unit)
 parseDeclNewtype1 keyword name = do
   vars <- many parseTypeVarBinding
   tok <- token TokEquals
@@ -182,26 +195,26 @@ parseDeclNewtype1 keyword name = do
   body <- parseTypeAtom
   pure $ DeclNewtype unit { keyword, name, vars } tok wrapper body
 
-parseDeclType :: Parser (Declaration Unit)
+parseDeclType :: Parser (Recoverable Declaration Unit)
 parseDeclType = do
   keyword <- expect (isKeyword "type")
   parseDeclRole keyword
     <|> parseDeclType1 keyword
 
-parseDeclType1 :: SourceToken -> Parser (Declaration Unit)
+parseDeclType1 :: SourceToken -> Parser (Recoverable Declaration Unit)
 parseDeclType1 keyword = do
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclType2 keyword name
 
-parseDeclType2 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclType2 :: SourceToken -> Name Proper -> Parser (Recoverable Declaration Unit)
 parseDeclType2 keyword name = do
   vars <- many parseTypeVarBinding
   tok <- token TokEquals
   body <- parseType
   pure $ DeclType unit { keyword, name, vars } tok body
 
-parseDeclRole :: SourceToken -> Parser (Declaration Unit)
+parseDeclRole :: SourceToken -> Parser (Recoverable Declaration Unit)
 parseDeclRole keyword1 = do
   keyword2 <- expect (isKeyword "role")
   name <- parseProper
@@ -214,19 +227,19 @@ parseRole =
     <|> flip Tuple Nominal <$> expect (isKeyword "nominal")
     <|> flip Tuple Phantom <$> expect (isKeyword "phantom")
 
-parseDeclClass :: Parser (Declaration Unit)
+parseDeclClass :: Parser (Recoverable Declaration Unit)
 parseDeclClass = do
   keyword <- expect (isKeyword "class")
   parseDeclClassSignature keyword
     <|> parseDeclClass1 keyword
 
-parseDeclClassSignature :: SourceToken -> Parser (Declaration Unit)
+parseDeclClassSignature :: SourceToken -> Parser (Recoverable Declaration Unit)
 parseDeclClassSignature keyword = do
   Tuple label separator <- try $ Tuple <$> parseProper <*> expect isDoubleColon
   value <- parseType
   pure $ DeclKindSignature unit keyword $ Labeled { label, separator, value }
 
-parseDeclClass1 :: SourceToken -> Parser (Declaration Unit)
+parseDeclClass1 :: SourceToken -> Parser (Recoverable Declaration Unit)
 parseDeclClass1 keyword = do
   super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> expect (isKeyOperator "<=" || isKeyOperator "⇐")
   name <- parseProper
@@ -252,7 +265,7 @@ parseFundep =
   FundepDetermined <$> expect isRightArrow <*> many1 parseIdent
     <|> FundepDetermines <$> many1 parseIdent <*> expect isRightArrow <*> many1 parseIdent
 
-parseDeclInstanceChain :: Parser (Declaration Unit)
+parseDeclInstanceChain :: Parser (Recoverable Declaration Unit)
 parseDeclInstanceChain = DeclInstanceChain unit <$> separated parseInstanceChainSeparator parseInstance
 
 parseInstanceChainSeparator :: Parser SourceToken
@@ -292,7 +305,7 @@ parseInstanceBindingName name = do
   guarded <- parseGuarded (token TokEquals)
   pure $ InstanceBindingName unit { name, binders, guarded }
 
-parseDeclDerive :: Parser (Declaration Unit)
+parseDeclDerive :: Parser (Recoverable Declaration Unit)
 parseDeclDerive = do
   derive_ <- expect (isKeyword "derive")
   newtype_ <- optional $ expect (isKeyword "newtype")
@@ -304,25 +317,25 @@ parseDeclDerive = do
   types <- many parseTypeAtom
   pure $ DeclDerive unit derive_ newtype_ { keyword, name, separator, constraints, className, types }
 
-parseDeclValue :: Parser (Declaration Unit)
+parseDeclValue :: Parser (Recoverable Declaration Unit)
 parseDeclValue = do
   ident <- parseIdent
   parseDeclSignature ident
     <|> parseDeclValue1 ident
 
-parseDeclSignature :: Name Ident -> Parser (Declaration Unit)
+parseDeclSignature :: Name Ident -> Parser (Recoverable Declaration Unit)
 parseDeclSignature label = do
   separator <- expect isDoubleColon
   value <- parseType
   pure $ DeclSignature unit $ Labeled { label, separator, value }
 
-parseDeclValue1 :: Name Ident -> Parser (Declaration Unit)
+parseDeclValue1 :: Name Ident -> Parser (Recoverable Declaration Unit)
 parseDeclValue1 name = do
   binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
   pure $ DeclValue unit { name, binders, guarded }
 
-parseDeclForeign :: Parser (Declaration Unit)
+parseDeclForeign :: Parser (Recoverable Declaration Unit)
 parseDeclForeign = do
   keyword1 <- expect (isKeyword "foreign")
   keyword2 <- expect (isKeyword "import")
@@ -347,7 +360,7 @@ parseForeignValue = do
   value <- parseType
   pure $ ForeignValue $ Labeled { label, separator, value }
 
-parseDeclFixity :: Parser (Declaration Unit)
+parseDeclFixity :: Parser (Recoverable Declaration Unit)
 parseDeclFixity = do
   keyword <- parseFixityKeyword
   prec <- parseInt
@@ -1004,3 +1017,28 @@ reservedKeywords = Set.fromFoldable
   , "type"
   , "where"
   ]
+
+recoverTopLevelLayout :: forall a. (PositionedError -> Array SourceToken -> a) -> Parser a -> Parser a
+recoverTopLevelLayout mkNode = recover \err ->
+  map (mkNode err) <<< recoverTokensWhile \tok ->
+    case tok.value of
+      TokLayoutEnd
+        | tok.range.start.column == 0 -> false
+      TokLayoutSep
+        | tok.range.start.column == 0 -> false
+      _ -> true
+
+recoverTokensWhile :: (SourceToken -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
+recoverTokensWhile p = go []
+  where
+  go :: Array SourceToken -> TokenStream -> Recovery (Array SourceToken)
+  go acc stream = case TokenStream.step stream of
+    TokenError errPos err errStream ->
+      Recovery acc errPos stream
+    TokenEOF eofPos _ ->
+      Recovery acc eofPos stream
+    TokenCons tok nextPos nextStream
+      | p tok ->
+          go (Array.snoc acc tok) nextStream
+      | otherwise ->
+          Recovery acc tok.range.start stream

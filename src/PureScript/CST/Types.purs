@@ -73,7 +73,7 @@ data Token
   | TokLayoutStart
   | TokLayoutSep
   | TokLayoutEnd
-  
+
 derive instance eqToken :: Eq Token
 
 type SourceToken =
@@ -166,14 +166,14 @@ newtype Row a = Row
   , tail :: Maybe (Tuple SourceToken (Type a))
   }
 
-data Module a = Module
+data Module e a = Module
   { ann :: a
   , keyword :: SourceToken
   , name :: Name ModuleName
   , exports :: Maybe (DelimitedNonEmpty (Export a))
   , where :: SourceToken
   , imports :: Array (ImportDecl a)
-  , decls :: Array (Declaration a)
+  , decls :: Array (Declaration e a)
   , trailingComments :: Array (Comment LineFeed)
   }
 
@@ -190,7 +190,7 @@ data DataMembers a
   = DataAll a SourceToken
   | DataEnumerated a (Delimited (Name Proper))
 
-data Declaration a
+data Declaration e a
   = DeclData a (DataHead a) (Maybe (Tuple SourceToken (Separated (DataCtor a))))
   | DeclType a (DataHead a) SourceToken (Type a)
   | DeclNewtype a (DataHead a) SourceToken (Name Proper) (Type a)
@@ -203,6 +203,7 @@ data Declaration a
   | DeclFixity a FixityFields
   | DeclForeign a SourceToken SourceToken (Foreign a)
   | DeclRole a SourceToken SourceToken (Name Proper) (NonEmptyArray (Tuple SourceToken Role))
+  | DeclError e
 
 newtype Instance a = Instance
   { head :: InstanceHead a
