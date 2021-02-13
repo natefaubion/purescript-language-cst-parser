@@ -7,7 +7,6 @@ import Data.Array (fold, foldMap, foldl)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Char as Char
-import Data.Char.Unicode as Unicode
 import Data.Int (hexadecimal)
 import Data.Int as Int
 import Data.Lazy as Lazy
@@ -19,7 +18,7 @@ import Data.String (Pattern(..), Replacement(..))
 import Data.String as String
 import Data.String.CodeUnits as SCU
 import Data.String.Regex as Regex
-import Data.String.Regex.Flags (noFlags)
+import Data.String.Regex.Flags (unicode)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith)
@@ -100,7 +99,7 @@ regex mkErr regexStr = Lex \str ->
     _ ->
       LexFail (\_ -> mkErr (mkUnexpected str))  str
   where
-  matchRegex = unsafeRegex ("^(?:" <> regexStr <> ")") noFlags
+  matchRegex = unsafeRegex ("^(?:" <> regexStr <> ")") unicode
 
 string :: forall e. (String -> e) -> String -> Lex (Unit -> e) String
 string mkErr match = Lex \str ->
@@ -461,20 +460,14 @@ token =
     ident <- try $ charQuestionMark *> (parseIdent <|> parseProper)
     in TokHole ident
 
-  parseProper = ado
-    head <- satisfyUpper
-    rest <- takeWhile isIdentChar
-    in SCU.singleton head <> rest
+  parseProper =
+    regex (LexExpected "proper name") "\\p{Lu}[\\p{L}0-9_']*"
 
-  parseIdent = ado
-    head <- satisfyIdentStart
-    rest <- takeWhile isIdentChar
-    in SCU.singleton head <> rest
+  parseIdent =
+    regex (LexExpected "ident") "[\\p{Ll}_][\\p{L}0-9_']*"
 
-  parseSymbolIdent = ado
-    head <- satisfySymbol
-    rest <- takeWhile isSymbolChar
-    in SCU.singleton head <> rest
+  parseSymbolIdent =
+    regex (LexExpected "symbol") """(?:[:!#$%&*+./<=>?@\\^|~-]|(?!\p{P})\p{S})+"""
 
   parseCharLiteral = ado
     res <- charSingleQuote *> parseChar <* charSingleQuote
@@ -660,26 +653,6 @@ token =
 
   charAny =
    satisfy (LexExpected "char") (const true)
-
-  satisfyUpper =
-    satisfy (LexExpected "upper") Unicode.isUpper
-
-  satisfyIdentStart =
-    satisfy (LexExpected "identifier start") isIdentStart
-
-  satisfySymbol =
-    satisfy (LexExpected "symbol") isSymbolChar
-
-isSymbolChar :: Char -> Boolean
-isSymbolChar c =
-  String.contains (Pattern (SCU.singleton c)) ":!#$%&*+./<=>?@\\^|-~"
-    || (Unicode.isSymbol c && not (Unicode.isAscii c))
-
-isIdentStart :: Char -> Boolean
-isIdentStart c = Unicode.isLower c || c == '_'
-
-isIdentChar :: Char -> Boolean
-isIdentChar c = Unicode.isAlphaNum c || c == '_' || c == '\''
 
 toModuleName :: Array String -> Maybe ModuleName
 toModuleName = case _ of
