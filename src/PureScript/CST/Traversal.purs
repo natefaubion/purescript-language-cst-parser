@@ -1,12 +1,75 @@
-module PureScript.CST.Traversal where
+module PureScript.CST.Traversal
+  ( rewriteExprBottomUpM
+  , rewriteExprTopDownM
+  , rewriteExprWithContextM
+  , rewriteExprBottomUp
+  , rewriteExprTopDown
+  , rewriteExprWithContext
+  , foldMapExpr
+  ) where
 
 import Prelude
 
+import Control.Monad.Free (runFree)
+import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
+import Data.Const (Const(..))
+import Data.Functor.Compose (Compose(..))
+import Data.Identity (Identity(..))
+import Data.Newtype (un)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
+import Data.Tuple (Tuple, uncurry)
 import PureScript.CST.Types (CaseOf, Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Guarded(..), GuardedExpr, IfThenElse, Lambda, LetBinding(..), LetIn, PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Separated(..), ValueBindingFields, Where, Wrapped(..), AdoBlock)
 
 type Traversal a = forall f. Applicative f => (a -> f a) -> a -> f a
+type MonadicTraversal a = forall m. Monad m => (a -> m a) -> a -> m a
+type MonadicTraversalWithContext a = forall c m. Monad m => (c -> a -> m (Tuple c a)) -> c -> a -> m a
+type MonoidalTraversal a = forall m. Monoid m => (a -> m) -> a -> m
+type PureTraversal a = (a -> a) -> a -> a
+type PureTraversalWithContext a = forall c. (c -> a -> Tuple c a) -> c -> a -> a
+
+bottomUpTraversal :: Traversal ~> MonadicTraversal
+bottomUpTraversal traversal k = go
+  where go a = k =<< traversal go a
+
+topDownTraversal :: Traversal ~> MonadicTraversal
+topDownTraversal traversal k = go
+  where go a = k a >>= traversal go
+
+topDownTraversalWithContext :: Traversal ~> MonadicTraversalWithContext
+topDownTraversalWithContext traversal k = flip (runReaderT <<< go)
+  where go a = ReaderT \ctx -> k ctx a >>= uncurry (flip (runReaderT <<< traversal go))
+
+monoidalTraversal :: Traversal ~> MonoidalTraversal
+monoidalTraversal traversal k = un Const <<< runFree (un Identity) <<< un Compose <<< go
+  where go a = Compose (pure (Const (k a))) <*> traversal go a
+
+purely :: MonadicTraversal ~> PureTraversal
+purely traversal k = runFree (un Identity) <<< traversal (pure <<< k)
+
+purelyWithContext :: MonadicTraversalWithContext ~> PureTraversalWithContext
+purelyWithContext traversal k c = runFree (un Identity) <<< traversal (\c' a' -> pure (k c' a')) c
+
+rewriteExprBottomUpM :: forall a. MonadicTraversal (Expr a)
+rewriteExprBottomUpM = bottomUpTraversal traverseExpr1
+
+rewriteExprTopDownM :: forall a. MonadicTraversal (Expr a)
+rewriteExprTopDownM = topDownTraversal traverseExpr1
+
+rewriteExprWithContextM :: forall a. MonadicTraversalWithContext (Expr a)
+rewriteExprWithContextM = topDownTraversalWithContext traverseExpr1
+
+rewriteExprBottomUp :: forall a. PureTraversal (Expr a)
+rewriteExprBottomUp = purely rewriteExprBottomUpM
+
+rewriteExprTopDown :: forall a. PureTraversal (Expr a)
+rewriteExprTopDown = purely rewriteExprTopDownM
+
+rewriteExprWithContext :: forall a. PureTraversalWithContext (Expr a)
+rewriteExprWithContext = purelyWithContext rewriteExprWithContextM
+
+foldMapExpr :: forall a. MonoidalTraversal (Expr a)
+foldMapExpr = monoidalTraversal traverseExpr1
 
 traverseExpr1 :: forall a. Traversal (Expr a)
 traverseExpr1 k = case _ of
@@ -26,7 +89,7 @@ traverseExpr1 k = case _ of
   ExprLet a letIn -> ExprLet a <$> traverseLetIn k letIn
   ExprDo a doBlock -> ExprDo a <$> traverseDoBlock k doBlock
   ExprAdo a adoBlock -> ExprAdo a <$> traverseAdoBlock k adoBlock
-  expr -> pure expr
+  expr -> k expr
 
 traverseAdoBlock :: forall a f. Applicative f => (Expr a -> f (Expr a)) -> AdoBlock a -> f (AdoBlock a)
 traverseAdoBlock k a = a { statements = _, result = _ } <$> traverse (traverseDoStatement k) a.statements <*> k a.result
