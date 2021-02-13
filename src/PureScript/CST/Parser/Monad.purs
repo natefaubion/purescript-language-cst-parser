@@ -16,7 +16,7 @@ module PureScript.CST.Parser.Monad
 import Prelude
 
 import Control.Alt (class Alt, (<|>))
-import Control.Lazy (class Lazy)
+import Control.Lazy (class Lazy, fix)
 import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Lazy as Z
@@ -128,16 +128,14 @@ lookAhead :: forall a. Parser a -> Parser a
 lookAhead = LookAhead
 
 many :: forall a. Parser a -> Parser (Array a)
-many p = go []
-  where
-  go acc = optional p >>= case _ of
-    Just more ->
-      go (Array.snoc acc more)
-    Nothing ->
-      pure acc
+many p = fix \go ->
+  Array.cons <$> p <*> go
+    <|> pure []
 
 optional :: forall a. Parser a -> Parser (Maybe a)
-optional p = Just <$> p <|> pure Nothing
+optional p =
+  Just <$> p
+    <|> pure Nothing
 
 eof :: Parser (Array (Comment LineFeed))
 eof = Eof identity
@@ -170,6 +168,14 @@ type ParserState =
   , stream :: TokenStream
   }
 
+data FailUnwind a
+  = FailStop (ParserResult a)
+  | FailAlt (ParserStack a) ParserState (Parser a)
+
+data SuccUnwind a
+  = SuccStop (ParserResult a)
+  | SuccBinds (ParserStack a) ParserState (ParserBinds a)
+
 runParser' :: forall a. TokenStream -> Parser a -> ParserResult a
 runParser' = \stream parser ->
   (unsafeCoerce :: ParserResult UnsafeBoundValue -> ParserResult a) $
@@ -191,36 +197,21 @@ runParser' = \stream parser ->
     Bind p binds ->
       go (StkBinds stack binds) state p
     p@(Pure a) ->
-      case stack of
-        StkNil ->
-          ParseSucc a state.position state.consumed state.stream
-        StkAlt prevStack _ _ ->
-          go prevStack state p
-        StkTry prevStack _ ->
-          go prevStack state p
-        StkLookAhead prevStack prevState ->
-          go prevStack prevState p
-        StkBinds prevStack queue ->
+      case unwindSucc a state stack of
+        SuccBinds prevStack prevState queue ->
           case unconsView queue of
             UnconsDone (ParserK k) ->
-              go prevStack state (k a)
+              go prevStack prevState (k a)
             UnconsMore (ParserK k) nextQueue ->
-              go (StkBinds prevStack nextQueue) state (k a)
+              go (StkBinds prevStack nextQueue) prevState (k a)
+        SuccStop res ->
+          res
     p@(Fail errPos err) ->
-      case stack of
-        StkNil ->
-          ParseFail err errPos state.consumed (Just state.stream)
-        StkAlt prevStack prevState prev ->
-          if state.consumed then
-            go prevStack state p
-          else
-            go prevStack prevState prev
-        StkTry prevStack prevState ->
-          go prevStack (state { consumed = prevState.consumed }) p
-        StkLookAhead prevStack prevState ->
-          go prevStack prevState p
-        StkBinds prevStack _ ->
-          go prevStack state p
+      case unwindFail err errPos state stack of
+        FailAlt prevStack prevState prev ->
+          go prevStack prevState prev
+        FailStop res ->
+          res
     Take k ->
       case TokenStream.step state.stream of
         TokenError errPos err errStream ->
@@ -243,3 +234,32 @@ runParser' = \stream parser ->
           go stack state (Fail tok.range.start (ExpectedEof tok.value))
     Defer z ->
       go stack state (Z.force z)
+
+  unwindFail :: ParseError -> SourcePos -> ParserState -> ParserStack UnsafeBoundValue -> FailUnwind UnsafeBoundValue
+  unwindFail err errPos state = case _ of
+    StkNil ->
+      FailStop (ParseFail err errPos state.consumed (Just state.stream))
+    StkAlt prevStack prevState prev ->
+      if state.consumed then
+        unwindFail err errPos state prevStack
+      else
+        FailAlt prevStack prevState prev
+    StkTry prevStack prevState ->
+      unwindFail err errPos (state { consumed = prevState.consumed }) prevStack
+    StkLookAhead prevStack prevState ->
+      unwindFail err errPos prevState prevStack
+    StkBinds prevStack _ ->
+      unwindFail err errPos state prevStack
+
+  unwindSucc :: UnsafeBoundValue -> ParserState -> ParserStack UnsafeBoundValue -> SuccUnwind UnsafeBoundValue
+  unwindSucc a state = case _ of
+    StkNil ->
+      SuccStop (ParseSucc a state.position state.consumed state.stream)
+    StkAlt prevStack _ _ ->
+      unwindSucc a state prevStack
+    StkTry prevStack _ ->
+      unwindSucc a state prevStack
+    StkLookAhead prevStack prevState ->
+      unwindSucc a prevState prevStack
+    StkBinds prevStack queue ->
+      SuccBinds prevStack state queue
