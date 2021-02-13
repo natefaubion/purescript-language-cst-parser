@@ -133,6 +133,8 @@ newtype Labeled a b = Labeled
   , value  :: b
   }
 
+derive instance newtypeLabeled :: Newtype (Labeled a b) _
+
 type Delimited a = Wrapped (Maybe (Separated a))
 type DelimitedNonEmpty a = Wrapped (Separated a)
 
