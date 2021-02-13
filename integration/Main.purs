@@ -13,6 +13,7 @@ import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
 import Data.Newtype (un)
 import Data.Number.Format as NF
+import Data.String as Str
 import Data.String.CodeUnits as String
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
@@ -25,6 +26,7 @@ import Effect.Aff.AVar as AVar
 import Effect.Class (liftEffect)
 import Effect.Console as Console
 import Effect.Exception (throwException)
+import Node.Buffer as Buffer
 import Node.ChildProcess as Exec
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
@@ -49,9 +51,12 @@ main = runAff_ (either throwException mempty) do
 
   writeTextFile UTF8 (tmpPath <> "/spago.dhall") defaultSpagoDhall
 
-  let installCmd = "cd " <> tmpPath <> "; spago -x spago.dhall ls packages | cut -f 1 -d \' \' | xargs spago install"
-
-  _ <- liftEffect $ Exec.execSync installCmd Exec.defaultExecSyncOptions
+  let execOpts = Exec.defaultExecSyncOptions { cwd = Just tmpPath }
+  pkgs <- liftEffect $ Exec.execSync "spago ls packages" execOpts
+  s <- liftEffect $ Buffer.toString UTF8 pkgs
+  let lines = Str.split (Str.Pattern "\n") s
+  let packages = Str.joinWith " " (map (String.takeWhile (\c -> c /= ' ')) lines)
+  _ <- liftEffect $ Exec.execSync ("spago install " <> packages) execOpts
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
 
