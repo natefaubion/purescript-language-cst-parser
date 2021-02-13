@@ -1,7 +1,6 @@
 module PureScript.CST.Parser.Monad
   ( Parser
   , ParserResult(..)
-  , ParseError
   , PositionedError
   , runParser
   , runParser'
@@ -22,6 +21,7 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
+import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
 import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (Comment, LineFeed, SourcePos, SourceToken)
@@ -65,8 +65,6 @@ uncons'
 uncons' cons l r = case l of
   Leaf k -> cons (unsafeCoerce k) (unsafeCoerce r)
   Node l' r' -> uncons' cons l' (Node (unsafeCoerce r') (unsafeCoerce r))
-
-type ParseError = String
 
 type PositionedError =
   { position :: SourcePos
@@ -225,10 +223,10 @@ runParser' = \stream parser ->
           go prevStack state p
     Take k ->
       case TokenStream.step state.stream of
-        TokenError errPos _ errStream ->
-          ParseFail "Failed to parse token" errPos state.consumed errStream
+        TokenError errPos err errStream ->
+          ParseFail err errPos state.consumed errStream
         TokenEOF errPos _ ->
-          go stack state (Fail errPos "Unexpected EOF")
+          go stack state (Fail errPos UnexpectedEof)
         TokenCons tok nextPos nextStream ->
           case k tok of
             Left err ->
@@ -237,11 +235,11 @@ runParser' = \stream parser ->
               go stack { consumed: true, position: nextPos, stream: nextStream } (Pure a)
     Eof k ->
       case TokenStream.step state.stream of
-        TokenError errPos _ errStream ->
-          ParseFail "Failed to parse token" errPos state.consumed errStream
+        TokenError errPos err errStream ->
+          ParseFail err errPos state.consumed errStream
         TokenEOF eofPos comments ->
           go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
         TokenCons tok _ _ ->
-          go stack state (Fail tok.range.start "Expected EOF")
+          go stack state (Fail tok.range.start (ExpectedEof tok.value))
     Defer z ->
       go stack state (Z.force z)

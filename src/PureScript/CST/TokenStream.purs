@@ -8,7 +8,7 @@ import Data.Lazy as Lazy
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Tuple (Tuple(..))
-import PureScript.CST.Errors (TokenError)
+import PureScript.CST.Errors (ParseError)
 import PureScript.CST.Types (Comment, LineFeed, SourcePos, SourceToken)
 
 newtype TokenStream = TokenStream (Lazy TokenStep)
@@ -17,7 +17,7 @@ derive instance newtypeTokenStream :: Newtype TokenStream _
 
 data TokenStep
   = TokenEOF SourcePos (Array (Comment LineFeed))
-  | TokenError SourcePos TokenError (Maybe TokenStream)
+  | TokenError SourcePos ParseError (Maybe TokenStream)
   | TokenCons SourceToken SourcePos TokenStream
 
 step :: TokenStream -> TokenStep
