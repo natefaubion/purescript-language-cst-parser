@@ -215,6 +215,8 @@ newtype Instance a = Instance
   , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding a)))
   }
 
+derive instance newtypeInstance :: Newtype (Instance a) _
+
 data InstanceBinding a
   = InstanceBindingSignature a (Labeled (Name Ident) (Type a))
   | InstanceBindingName a (ValueBindingFields a)
