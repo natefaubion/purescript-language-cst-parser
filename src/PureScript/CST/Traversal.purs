@@ -5,16 +5,19 @@ import Prelude
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple)
 import PureScript.CST.Types (AdoBlock, Binder, CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
+{-
 type Traversal a = forall f. Applicative f => (a -> f a) -> a -> f a
 type MonadicTraversal a = forall m. Monad m => (a -> m a) -> a -> m a
 type MonadicTraversalWithContext a = forall c m. Monad m => (c -> a -> m (Tuple c a)) -> c -> a -> m a
 type MonoidalTraversal a = forall m. Monoid m => (a -> m) -> a -> m
 type PureTraversal a = (a -> a) -> a -> a
 type PureTraversalWithContext a = forall c. (c -> a -> Tuple c a) -> c -> a -> a
+-}
+
+type BasicTraversal f ann g = g ann -> f (g ann)
 
 type GLanguageTraversal g =
   { onDeclaration :: g Declaration
@@ -22,8 +25,6 @@ type GLanguageTraversal g =
   , onBinder :: g Binder
   , onType :: g Type
   }
-
-type BasicTraversal f ann g = g ann -> f (g ann)
 
 type LanguageTraversal f a = GLanguageTraversal (BasicTraversal f a)
 
@@ -44,7 +45,7 @@ traverseModule k (Module mod) = Module <<<
   , decls: _
   } <$> traverse (traverseDeclaration k) mod.decls
 
-traverseDeclaration :: forall f a. Applicative f => LanguageTraversal f a -> BasicTraversal f a Declaration
+traverseDeclaration :: forall f a r. Applicative f => { | OnBinder f a + OnDeclaration f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a Declaration
 traverseDeclaration k = case _ of
   DeclData a binding ctors -> DeclData a <$> traverseDataHead k binding <*> traverse (traverse (traverseSeparated (traverseDataCtor k))) ctors
   DeclType a head tok typ -> DeclType a <$> traverseDataHead k head <@> tok <*> k.onType typ
@@ -209,20 +210,6 @@ traverseDoBlock k d = d { statements = _ } <$> traverse (traverseDoStatement k) 
 traverseAdoBlock :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a AdoBlock
 traverseAdoBlock k a = a { statements = _, result = _ } <$> traverse (traverseDoStatement k) a.statements <*> k.onExpr a.result
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 {-
 bottomUpTraversal :: Traversal ~> MonadicTraversal
 bottomUpTraversal traversal k = go
@@ -266,5 +253,4 @@ rewriteExprWithContext = purelyWithContext rewriteExprWithContextM
 
 foldMapExpr :: forall a. MonoidalTraversal (Expr a)
 foldMapExpr = monoidalTraversal traverseExpr1
-
 -}
