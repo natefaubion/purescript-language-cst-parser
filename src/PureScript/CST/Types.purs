@@ -167,13 +167,21 @@ newtype Row e = Row
   , tail :: Maybe (Tuple SourceToken (Type e))
   }
 
-data Module e = Module
+type Module e =
+  { header :: ModuleHeader e
+  , body :: ModuleBody e
+  }
+
+newtype ModuleHeader e = ModuleHeader
   { keyword :: SourceToken
   , name :: Name ModuleName
   , exports :: Maybe (DelimitedNonEmpty (Export e))
   , where :: SourceToken
   , imports :: Array (ImportDecl e)
-  , decls :: Array (Declaration e)
+  }
+
+newtype ModuleBody e = ModuleBody
+  { decls :: Array (Declaration e)
   , trailingComments :: Array (Comment LineFeed)
   }
 
