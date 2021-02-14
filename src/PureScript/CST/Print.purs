@@ -2,13 +2,24 @@ module PureScript.CST.Print where
 
 import Prelude
 
+import Data.Foldable (foldMap)
 import Data.Maybe (Maybe(..))
+import Data.Monoid (power)
 import Data.Newtype (unwrap)
-import PureScript.CST.Types (ModuleName, SourceStyle(..), Token(..))
+import PureScript.CST.Types (Comment(..), LineFeed(..), ModuleName, SourceStyle(..), Token(..), SourceToken)
 
 data TokenOption
   = ShowLayout
   | HideLayout
+
+printSourceToken :: SourceToken -> String
+printSourceToken = printSourceTokenWithOption HideLayout
+
+printSourceTokenWithOption :: TokenOption -> SourceToken -> String
+printSourceTokenWithOption option tok =
+  foldMap (printComment printLineFeed) tok.leadingComments
+    <> printTokenWithOption option tok.value
+    <> foldMap (printComment absurd) tok.trailingComments
 
 printToken :: Token -> String
 printToken = printTokenWithOption HideLayout
@@ -104,3 +115,14 @@ printQualified :: Maybe ModuleName -> String -> String
 printQualified moduleName name = case moduleName of
   Nothing -> name
   Just mn -> unwrap mn <> "." <> name
+
+printComment :: forall l. (l -> String) -> Comment l -> String
+printComment k = case _ of
+  Comment str -> str
+  Space n -> power " " n
+  Line l -> k l
+
+printLineFeed :: LineFeed -> String
+printLineFeed = case _ of
+  LF -> "\n"
+  CRLF -> "\r\n"

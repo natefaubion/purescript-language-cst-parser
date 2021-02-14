@@ -1,13 +1,21 @@
-module PureScript.CST.Parser where
+module PureScript.CST.Parser
+  ( RecoveredError
+  , Recovered
+  , parseModule
+  , parseModuleHeader
+  , parseModuleBody
+  , parseType
+  , parseExpr
+  , parseBinder
+  ) where
 
 import Prelude
 
 import Control.Alt (alt)
-import Control.Lazy (defer)
+import Control.Lazy (defer, fix)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Compactable (separate)
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..))
@@ -15,9 +23,24 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import PureScript.CST.Errors (ParseError(..))
-import PureScript.CST.Parser.Monad (Parser, eof, fail, lookAhead, many, optional, take, try)
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
+import PureScript.CST.Parser.Monad (Parser, PositionedError, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
+import PureScript.CST.TokenStream as TokenStream
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourcePos, SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
 
+type RecoveredError =
+  { error :: ParseError
+  , position :: SourcePos
+  , tokens :: Array SourceToken
+  }
+
+type Recovered f = f RecoveredError
+
+type RecoveryStrategy f = Parser (Recovered f) -> Parser (Recovered f)
+
+-- Right associated alts are more efficient for the parser interpreter since
+-- it doesn't have to build and walk a stack for each chain greedily, but it
+-- can expand them on demand.
 infixr 3 alt as <|>
 
 expectMap :: forall a. (SourceToken -> Maybe a) -> Parser a
@@ -88,50 +111,73 @@ layout valueParser =
   tail = many (token TokLayoutSep *> valueParser)
   go head = Array.cons head <$> tail
 
-parseModule :: Parser (Module Unit)
+parseModule :: Parser (Recovered Module)
 parseModule = do
+  header <- parseModuleHeader
+  body <- parseModuleBody
+  pure $ Module { header, body }
+
+parseModuleHeader :: Parser (Recovered ModuleHeader)
+parseModuleHeader = do
   keyword <- expect (isKeyword "module")
   name <- parseModuleName
   exports <- optional $ parens $ separated (token TokComma) parseExport
   where_ <- expect (isKeyword "where")
-  { left: imports, right: decls } <- map separate $ layout $ Left <$> parseImportDecl <|> Right <$> parseDecl
+  imports <- token TokLayoutStart *> parseModuleImportDecls
+  pure $ ModuleHeader { keyword, name, exports, where: where_, imports }
+
+parseModuleBody :: Parser (Recovered ModuleBody)
+parseModuleBody = do
+  decls <- parseModuleDecls <* token TokLayoutEnd
   trailingComments <- eof
-  pure $ Module { ann: unit, keyword, name, exports, where: where_, imports, decls, trailingComments }
+  pure $ ModuleBody { decls, trailingComments }
 
-parseExport :: Parser (Export Unit)
+parseModuleImportDecls :: Parser (Array (Recovered ImportDecl))
+parseModuleImportDecls = fix \go ->
+  Array.cons
+    <$> parseImportDecl
+    <*> (token TokLayoutSep *> go <|> lookAhead (token TokLayoutEnd) *> pure [])
+    <|> pure []
+
+parseModuleDecls :: Parser (Array (Recovered Declaration))
+parseModuleDecls =
+  lookAhead (token TokLayoutEnd) *> pure []
+    <|> fix \go -> Array.cons <$> recoverDecl parseDecl <*> (token TokLayoutSep *> go <|> pure [])
+
+parseExport :: Parser (Recovered Export)
 parseExport =
-  ExportTypeOp unit <$> expect (isKeyword "type") <*> parseSymbol
-    <|> ExportClass unit <$> expect (isKeyword "class") <*> parseProper
-    <|> ExportModule unit <$> expect (isKeyword "module") <*> parseModuleName
-    <|> try (ExportKind unit <$> expect (isKeyword "kind") <*> parseProper)
-    <|> ExportOp unit <$> parseSymbol
-    <|> ExportValue unit <$> parseIdent
-    <|> ExportType unit <$> parseProper <*> optional parseDataMembers
+  ExportTypeOp <$> expect (isKeyword "type") <*> parseSymbol
+    <|> ExportClass <$> expect (isKeyword "class") <*> parseProper
+    <|> ExportModule <$> expect (isKeyword "module") <*> parseModuleName
+    <|> try (ExportKind <$> expect (isKeyword "kind") <*> parseProper)
+    <|> ExportOp <$> parseSymbol
+    <|> ExportValue <$> parseIdent
+    <|> ExportType <$> parseProper <*> optional parseDataMembers
 
-parseImportDecl :: Parser (ImportDecl Unit)
+parseImportDecl :: Parser (Recovered ImportDecl)
 parseImportDecl = do
   keyword <- expect (isKeyword "import")
   module_ <- parseModuleName
   names <- optional $ Tuple <$> optional (expect (isKeyword "hiding")) <*> parens (separated (token TokComma) parseImport)
   qualified <- optional $ Tuple <$> expect (isKeyword "as") <*> parseModuleName
-  pure $ ImportDecl { ann: unit, keyword, "module": module_, names, qualified }
+  pure $ ImportDecl { keyword, "module": module_, names, qualified }
 
-parseImport :: Parser (Import Unit)
+parseImport :: Parser (Recovered Import)
 parseImport =
-  ImportOp unit <$> parseSymbol
-    <|> ImportType unit <$> parseProper <*> optional parseDataMembers
-    <|> ImportTypeOp unit <$> expect (isKeyword "type") <*> parseSymbol
-    <|> ImportClass unit <$> expect (isKeyword "class") <*> parseProper
-    <|> ImportKind unit <$> expect (isKeyword "kind") <*> parseProper
-    <|> ImportValue unit <$> parseIdent
+  ImportOp <$> parseSymbol
+    <|> ImportType <$> parseProper <*> optional parseDataMembers
+    <|> ImportTypeOp <$> expect (isKeyword "type") <*> parseSymbol
+    <|> ImportClass <$> expect (isKeyword "class") <*> parseProper
+    <|> ImportKind <$> expect (isKeyword "kind") <*> parseProper
+    <|> ImportValue <$> parseIdent
 
-parseDataMembers :: Parser (DataMembers Unit)
+parseDataMembers :: Parser DataMembers
 parseDataMembers =
-  DataAll unit <$> expect (isKeySymbol "..")
-    <|> DataEnumerated unit <$> delimited TokLeftParen TokRightParen TokComma parseProper
+  DataAll <$> expect (isKeySymbol "..")
+    <|> DataEnumerated <$> delimited TokLeftParen TokRightParen TokComma parseProper
 
-parseDecl :: Parser (Declaration Unit)
-parseDecl =
+parseDecl :: Parser (Recovered Declaration)
+parseDecl = do
   parseDeclData
     <|> parseDeclNewtype
     <|> parseDeclType
@@ -142,71 +188,71 @@ parseDecl =
     <|> parseDeclForeign
     <|> parseDeclFixity
 
-parseDeclKindSignature :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclKindSignature :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclKindSignature keyword label = do
   separator <- expect isDoubleColon
   value <- parseType
-  pure $ DeclKindSignature unit keyword $ Labeled { label, separator, value }
+  pure $ DeclKindSignature keyword $ Labeled { label, separator, value }
 
-parseDeclData :: Parser (Declaration Unit)
+parseDeclData :: Parser (Recovered Declaration)
 parseDeclData = do
   keyword <- expect (isKeyword "data")
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclData1 keyword name
 
-parseDeclData1 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclData1 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclData1 keyword name = do
   vars <- many parseTypeVarBinding
   ctors <- optional (Tuple <$> token TokEquals <*> separated (token TokPipe) parseDataCtor)
-  pure $ DeclData unit { keyword, name, vars } ctors
+  pure $ DeclData { keyword, name, vars } ctors
 
-parseDataCtor :: Parser (DataCtor Unit)
+parseDataCtor :: Parser (Recovered DataCtor)
 parseDataCtor =
-  { ann: unit, name: _, fields: _ }
+  { name: _, fields: _ }
     <$> parseProper
     <*> many parseTypeAtom
 
-parseDeclNewtype :: Parser (Declaration Unit)
+parseDeclNewtype :: Parser (Recovered Declaration)
 parseDeclNewtype = do
   keyword <- expect (isKeyword "newtype")
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclNewtype1 keyword name
 
-parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclNewtype1 keyword name = do
   vars <- many parseTypeVarBinding
   tok <- token TokEquals
   wrapper <- parseProper
   body <- parseTypeAtom
-  pure $ DeclNewtype unit { keyword, name, vars } tok wrapper body
+  pure $ DeclNewtype { keyword, name, vars } tok wrapper body
 
-parseDeclType :: Parser (Declaration Unit)
+parseDeclType :: Parser (Recovered Declaration)
 parseDeclType = do
   keyword <- expect (isKeyword "type")
   parseDeclRole keyword
     <|> parseDeclType1 keyword
 
-parseDeclType1 :: SourceToken -> Parser (Declaration Unit)
+parseDeclType1 :: SourceToken -> Parser (Recovered Declaration)
 parseDeclType1 keyword = do
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclType2 keyword name
 
-parseDeclType2 :: SourceToken -> Name Proper -> Parser (Declaration Unit)
+parseDeclType2 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclType2 keyword name = do
   vars <- many parseTypeVarBinding
   tok <- token TokEquals
   body <- parseType
-  pure $ DeclType unit { keyword, name, vars } tok body
+  pure $ DeclType { keyword, name, vars } tok body
 
-parseDeclRole :: SourceToken -> Parser (Declaration Unit)
+parseDeclRole :: SourceToken -> Parser (Recovered Declaration)
 parseDeclRole keyword1 = do
   keyword2 <- expect (isKeyword "role")
   name <- parseProper
   roles <- many1 parseRole
-  pure $ DeclRole unit keyword1 keyword2 name roles
+  pure $ DeclRole keyword1 keyword2 name roles
 
 parseRole :: Parser (Tuple SourceToken Role)
 parseRole =
@@ -214,33 +260,33 @@ parseRole =
     <|> flip Tuple Nominal <$> expect (isKeyword "nominal")
     <|> flip Tuple Phantom <$> expect (isKeyword "phantom")
 
-parseDeclClass :: Parser (Declaration Unit)
+parseDeclClass :: Parser (Recovered Declaration)
 parseDeclClass = do
   keyword <- expect (isKeyword "class")
   parseDeclClassSignature keyword
     <|> parseDeclClass1 keyword
 
-parseDeclClassSignature :: SourceToken -> Parser (Declaration Unit)
+parseDeclClassSignature :: SourceToken -> Parser (Recovered Declaration)
 parseDeclClassSignature keyword = do
   Tuple label separator <- try $ Tuple <$> parseProper <*> expect isDoubleColon
   value <- parseType
-  pure $ DeclKindSignature unit keyword $ Labeled { label, separator, value }
+  pure $ DeclKindSignature keyword $ Labeled { label, separator, value }
 
-parseDeclClass1 :: SourceToken -> Parser (Declaration Unit)
+parseDeclClass1 :: SourceToken -> Parser (Recovered Declaration)
 parseDeclClass1 keyword = do
   super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> expect (isKeyOperator "<=" || isKeyOperator "⇐")
   name <- parseProper
   vars <- many parseTypeVarBinding
   fundeps <- optional $ Tuple <$> token TokPipe <*> separated (token TokComma) parseFundep
   members <- optional $ Tuple <$> expect (isKeyword "where") <*> layoutNonEmpty parseClassMember
-  pure $ DeclClass unit { keyword, super, name, vars, fundeps } members
+  pure $ DeclClass { keyword, super, name, vars, fundeps } members
 
-parseClassConstraints :: Parser (Type Unit) -> Parser (OneOrDelimited (Type Unit))
+parseClassConstraints :: Parser (Recovered Type) -> Parser (OneOrDelimited (Recovered Type))
 parseClassConstraints parseOneConstraint = do
   Many <$> parens (separated (token TokComma) parseType)
     <|> One <$> parseOneConstraint
 
-parseClassMember :: Parser (Labeled (Name Ident) (Type Unit))
+parseClassMember :: Parser (Labeled (Name Ident) (Recovered Type))
 parseClassMember = do
   label <- parseIdent
   separator <- expect isDoubleColon
@@ -252,15 +298,15 @@ parseFundep =
   FundepDetermined <$> expect isRightArrow <*> many1 parseIdent
     <|> FundepDetermines <$> many1 parseIdent <*> expect isRightArrow <*> many1 parseIdent
 
-parseDeclInstanceChain :: Parser (Declaration Unit)
-parseDeclInstanceChain = DeclInstanceChain unit <$> separated parseInstanceChainSeparator parseInstance
+parseDeclInstanceChain :: Parser (Recovered Declaration)
+parseDeclInstanceChain = DeclInstanceChain <$> separated parseInstanceChainSeparator parseInstance
 
 parseInstanceChainSeparator :: Parser SourceToken
 parseInstanceChainSeparator =
   expect (isKeyword "else")
     <* optional (token TokLayoutSep)
 
-parseInstance :: Parser (Instance Unit)
+parseInstance :: Parser (Recovered Instance)
 parseInstance = do
   keyword <- expect (isKeyword "instance")
   name <- parseIdent
@@ -274,25 +320,25 @@ parseInstance = do
     , body
     }
 
-parseInstanceBinding :: Parser (InstanceBinding Unit)
+parseInstanceBinding :: Parser (Recovered InstanceBinding)
 parseInstanceBinding = do
   ident <- parseIdent
   parseInstanceBindingSignature ident
     <|> parseInstanceBindingName ident
 
-parseInstanceBindingSignature :: Name Ident -> Parser (InstanceBinding Unit)
+parseInstanceBindingSignature :: Name Ident -> Parser (Recovered InstanceBinding)
 parseInstanceBindingSignature label = do
   separator <- expect isDoubleColon
   value <- parseType
-  pure $ InstanceBindingSignature unit $ Labeled { label, separator, value }
+  pure $ InstanceBindingSignature $ Labeled { label, separator, value }
 
-parseInstanceBindingName :: Name Ident -> Parser (InstanceBinding Unit)
+parseInstanceBindingName :: Name Ident -> Parser (Recovered InstanceBinding)
 parseInstanceBindingName name = do
   binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
-  pure $ InstanceBindingName unit { name, binders, guarded }
+  pure $ InstanceBindingName { name, binders, guarded }
 
-parseDeclDerive :: Parser (Declaration Unit)
+parseDeclDerive :: Parser (Recovered Declaration)
 parseDeclDerive = do
   derive_ <- expect (isKeyword "derive")
   newtype_ <- optional $ expect (isKeyword "newtype")
@@ -302,34 +348,34 @@ parseDeclDerive = do
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> expect isRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
-  pure $ DeclDerive unit derive_ newtype_ { keyword, name, separator, constraints, className, types }
+  pure $ DeclDerive derive_ newtype_ { keyword, name, separator, constraints, className, types }
 
-parseDeclValue :: Parser (Declaration Unit)
+parseDeclValue :: Parser (Recovered Declaration)
 parseDeclValue = do
   ident <- parseIdent
   parseDeclSignature ident
     <|> parseDeclValue1 ident
 
-parseDeclSignature :: Name Ident -> Parser (Declaration Unit)
+parseDeclSignature :: Name Ident -> Parser (Recovered Declaration)
 parseDeclSignature label = do
   separator <- expect isDoubleColon
   value <- parseType
-  pure $ DeclSignature unit $ Labeled { label, separator, value }
+  pure $ DeclSignature $ Labeled { label, separator, value }
 
-parseDeclValue1 :: Name Ident -> Parser (Declaration Unit)
+parseDeclValue1 :: Name Ident -> Parser (Recovered Declaration)
 parseDeclValue1 name = do
   binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
-  pure $ DeclValue unit { name, binders, guarded }
+  pure $ DeclValue { name, binders, guarded }
 
-parseDeclForeign :: Parser (Declaration Unit)
+parseDeclForeign :: Parser (Recovered Declaration)
 parseDeclForeign = do
   keyword1 <- expect (isKeyword "foreign")
   keyword2 <- expect (isKeyword "import")
   foreign_ <- parseForeignData <|> parseForeignKind <|> parseForeignValue
-  pure $ DeclForeign unit keyword1 keyword2 foreign_
+  pure $ DeclForeign keyword1 keyword2 foreign_
 
-parseForeignData :: Parser (Foreign Unit)
+parseForeignData :: Parser (Recovered Foreign)
 parseForeignData = do
   keyword <- expect (isKeyword "data")
   label <- parseProper
@@ -337,22 +383,22 @@ parseForeignData = do
   value <- parseType
   pure $ ForeignData keyword $ Labeled { label, separator, value }
 
-parseForeignKind :: Parser (Foreign Unit)
+parseForeignKind :: Parser (Recovered Foreign)
 parseForeignKind = try $ ForeignKind <$> expect (isKeyword "kind") <*> parseProper
 
-parseForeignValue :: Parser (Foreign Unit)
+parseForeignValue :: Parser (Recovered Foreign)
 parseForeignValue = do
   label <- parseIdent
   separator <- expect isDoubleColon
   value <- parseType
   pure $ ForeignValue $ Labeled { label, separator, value }
 
-parseDeclFixity :: Parser (Declaration Unit)
+parseDeclFixity :: Parser (Recovered Declaration)
 parseDeclFixity = do
   keyword <- parseFixityKeyword
   prec <- parseInt
   operator <- parseFixityOp
-  pure $ DeclFixity unit { keyword, prec, operator }
+  pure $ DeclFixity { keyword, prec, operator }
 
 parseFixityKeyword :: Parser (Tuple SourceToken Fixity)
 parseFixityKeyword =
@@ -365,54 +411,54 @@ parseFixityOp =
   FixityType <$> expect (isKeyword "type") <*> parseQualifiedProper <*> expect (isKeyword "as") <*> parseOperator
     <|> FixityValue <$> parseQualifiedIdentOrProper <*> expect (isKeyword "as") <*> parseOperator
 
-parseType :: Parser (Type Unit)
+parseType :: Parser (Recovered Type)
 parseType = defer \_ -> do
   ty <- parseType1
-  TypeKinded unit ty <$> expect isDoubleColon <*> parseType
+  TypeKinded ty <$> expect isDoubleColon <*> parseType
     <|> pure ty
 
-parseType1 :: Parser (Type Unit)
+parseType1 :: Parser (Recovered Type)
 parseType1 = defer \_ -> do
   parseForall
     <|> parseType2
 
-parseType2 :: Parser (Type Unit)
+parseType2 :: Parser (Recovered Type)
 parseType2 = defer \_ -> do
   ty <- parseType3
-  TypeArr unit ty <$> expect isRightArrow <*> parseType1
-    <|> TypeConstrained unit ty <$> expect isRightFatArrow <*> parseType1
+  TypeArr ty <$> expect isRightArrow <*> parseType1
+    <|> TypeConstrained ty <$> expect isRightFatArrow <*> parseType1
     <|> pure ty
 
-parseType3 :: Parser (Type Unit)
+parseType3 :: Parser (Recovered Type)
 parseType3 = defer \_ -> do
-  foldl (\a (Tuple op b) -> TypeOp unit a op b)
+  foldl (\a (Tuple op b) -> TypeOp a op b)
     <$> parseType4
     <*> many (Tuple <$> parseQualifiedOperator <*> parseType4)
 
-parseType4 :: Parser (Type Unit)
+parseType4 :: Parser (Recovered Type)
 parseType4 = defer \_ ->
-  TypeUnaryRow unit <$> expect (isKeyOperator "#") <*> parseType4
+  TypeUnaryRow <$> expect (isKeyOperator "#") <*> parseType4
     <|> parseType5
 
-parseType5 :: Parser (Type Unit)
+parseType5 :: Parser (Recovered Type)
 parseType5 = defer \_ ->
-  foldl (TypeApp unit)
+  foldl TypeApp
     <$> parseTypeAtom
     <*> many parseTypeAtom
 
-parseTypeAtom :: Parser (Type Unit)
+parseTypeAtom :: Parser (Recovered Type)
 parseTypeAtom = defer \_ ->
-  TypeVar unit <$> parseIdent
-    <|> TypeConstructor unit <$> parseQualifiedProper
-    <|> uncurry (TypeString unit) <$> parseString
+  TypeVar <$> parseIdent
+    <|> TypeConstructor <$> parseQualifiedProper
+    <|> uncurry TypeString <$> parseString
     <|> parseTypeParens
-    <|> TypeRecord unit <$> braces parseRow
-    <|> TypeOpName unit <$> parseQualifiedSymbol
-    <|> TypeHole unit <$> parseHole
-    <|> TypeWildcard unit <$> token TokUnderscore
-    <|> TypeArrName unit <$> expect isSymbolArrow
+    <|> TypeRecord <$> braces parseRow
+    <|> TypeOpName <$> parseQualifiedSymbol
+    <|> TypeHole <$> parseHole
+    <|> TypeWildcard <$> token TokUnderscore
+    <|> TypeArrName <$> expect isSymbolArrow
 
-parseTypeParens :: Parser (Type Unit)
+parseTypeParens :: Parser (Recovered Type)
 parseTypeParens = do
   open <- token TokLeftParen
   parseRowParen open
@@ -421,14 +467,14 @@ parseTypeParens = do
     <|> parseTypeParen open
     <|> parseEmptyRow open
 
-parseRowParen :: SourceToken -> Parser (Type Unit)
+parseRowParen :: SourceToken -> Parser (Recovered Type)
 parseRowParen open = do
   Tuple label separator <- try $ Tuple <$> parseLabel <*> expect isDoubleColon
   value <- parseType
   rest <- many (Tuple <$> token TokComma <*> parseRowLabel)
   tail <- optional $ Tuple <$> token TokPipe <*> parseType
   close <- token TokRightParen
-  pure $ TypeRow unit $ Wrapped
+  pure $ TypeRow $ Wrapped
     { open
     , value: Row
         { labels: Just $ Separated
@@ -440,118 +486,118 @@ parseRowParen open = do
     , close
     }
 
-parseRowTailParen :: SourceToken -> Parser (Type Unit)
+parseRowTailParen :: SourceToken -> Parser (Recovered Type)
 parseRowTailParen open = do
   tail <- Tuple <$> token TokPipe <*> parseType
   close <- token TokRightParen
-  pure $ TypeRow unit $ Wrapped
+  pure $ TypeRow $ Wrapped
     { open
     , value: Row { labels: Nothing, tail: Just tail }
     , close
     }
 
-parseEmptyRow :: SourceToken -> Parser (Type Unit)
+parseEmptyRow :: SourceToken -> Parser (Recovered Type)
 parseEmptyRow open = do
   close <- token TokRightParen
-  pure $ TypeRow unit $ Wrapped
+  pure $ TypeRow $ Wrapped
     { open
     , value: Row { labels: Nothing, tail: Nothing }
     , close
     }
 
-parseKindedVar :: SourceToken -> Parser (Type Unit)
+parseKindedVar :: SourceToken -> Parser (Recovered Type)
 parseKindedVar open = do
-  Tuple var separator <- try $ Tuple <$> parens (TypeVar unit <$> parseIdent) <*> expect isDoubleColon
+  Tuple var separator <- try $ Tuple <$> parens (TypeVar <$> parseIdent) <*> expect isDoubleColon
   kind <- parseType
   close <- token TokRightParen
-  pure $ TypeParens unit $ Wrapped
+  pure $ TypeParens $ Wrapped
     { open
-    , value: TypeKinded unit (TypeParens unit var) separator kind
+    , value: TypeKinded (TypeParens var) separator kind
     , close
     }
 
-parseTypeParen :: SourceToken -> Parser (Type Unit)
+parseTypeParen :: SourceToken -> Parser (Recovered Type)
 parseTypeParen open = do
   value <- parseType1
   close <- token TokRightParen
-  pure $ TypeParens unit $ Wrapped { open, value, close }
+  pure $ TypeParens $ Wrapped { open, value, close }
 
-parseRow :: Parser (Row Unit)
+parseRow :: Parser (Recovered Row)
 parseRow = defer \_ -> do
   labels <- optional $ separated (token TokComma) parseRowLabel
   tail <- optional $ Tuple <$> token TokPipe <*> parseType
   pure $ Row { labels, tail }
 
-parseRowLabel :: Parser (Labeled (Name Label) (Type Unit))
+parseRowLabel :: Parser (Labeled (Name Label) (Recovered Type))
 parseRowLabel = do
   label <- parseLabel
   separator <- expect isDoubleColon
   value <- parseType
   pure $ Labeled { label, separator, value }
 
-parseForall :: Parser (Type Unit)
+parseForall :: Parser (Recovered Type)
 parseForall = defer \_ ->
-  TypeForall unit
+  TypeForall
     <$> expect isForall
     <*> many1 parseTypeVarBinding
     <*> token TokDot
     <*> parseType1
 
-parseTypeVarBinding :: Parser (TypeVarBinding Unit)
+parseTypeVarBinding :: Parser (Recovered TypeVarBinding)
 parseTypeVarBinding = defer \_ ->
   parseTypeVarKinded
     <|> TypeVarName <$> parseIdent
 
-parseTypeVarKinded :: Parser (TypeVarBinding Unit)
+parseTypeVarKinded :: Parser (Recovered TypeVarBinding)
 parseTypeVarKinded = TypeVarKinded <$> parens do
   label <- parseIdent
   separator <- expect isDoubleColon
   value <- parseType
   pure $ Labeled { label, separator, value }
 
-parseExpr :: Parser (Expr Unit)
+parseExpr :: Parser (Recovered Expr)
 parseExpr = defer \_ -> do
   expr <- parseExpr1
-  ExprTyped unit expr <$> expect isDoubleColon <*> parseType
+  ExprTyped expr <$> expect isDoubleColon <*> parseType
     <|> pure expr
 
-parseExpr1 :: Parser (Expr Unit)
+parseExpr1 :: Parser (Recovered Expr)
 parseExpr1 = defer \_ ->
-  foldl (uncurry <<< ExprOp unit)
+  foldl (uncurry <<< ExprOp)
     <$> parseExpr2
     <*> many (Tuple <$> parseQualifiedOperator <*> parseExpr2)
 
-parseExpr2 :: Parser (Expr Unit)
+parseExpr2 :: Parser (Recovered Expr)
 parseExpr2 = defer \_ ->
-  foldl (uncurry <<< ExprInfix unit)
+  foldl (uncurry <<< ExprInfix)
     <$> parseExpr3
     <*> many (Tuple <$> parseTickExpr <*> parseExpr)
 
-parseTickExpr :: Parser (Wrapped (Expr Unit))
+parseTickExpr :: Parser (Wrapped (Recovered Expr))
 parseTickExpr = do
   open <- token TokTick
   value <- parseTickExpr1
   close <- token TokTick
   pure $ Wrapped { open, value, close }
 
-parseTickExpr1 :: Parser (Expr Unit)
+parseTickExpr1 :: Parser (Recovered Expr)
 parseTickExpr1 = defer \_ ->
-  foldl (uncurry <<< ExprOp unit)
+  foldl (uncurry <<< ExprOp)
     <$> parseExpr3
     <*> many (Tuple <$> parseQualifiedOperator <*> parseExpr3)
 
-parseExpr3 :: Parser (Expr Unit)
+parseExpr3 :: Parser (Recovered Expr)
 parseExpr3 = defer \_ -> do
-  ExprNegate unit <$> expect (isKeyOperator "-") <*> parseExpr3
+  ExprNegate <$> expect (isKeyOperator "-") <*> parseExpr3
     <|> parseExpr4
 
-parseExpr4 :: Parser (Expr Unit)
+parseExpr4 :: Parser (Recovered Expr)
 parseExpr4 = defer \_ ->
-  foldl (ExprApp unit)
+  foldl (ExprApp)
     <$> parseExpr5
     <*> many parseExpr5
 
-parseExpr5 :: Parser (Expr Unit)
+parseExpr5 :: Parser (Recovered Expr)
 parseExpr5 = defer \_ ->
   parseIf
     <|> parseLetIn
@@ -561,7 +607,7 @@ parseExpr5 = defer \_ ->
     <|> parseAdo
     <|> parseExpr6
 
-parseIf :: Parser (Expr Unit)
+parseIf :: Parser (Recovered Expr)
 parseIf = do
   keyword <- expect (isKeyword "if")
   cond <- parseExpr
@@ -569,124 +615,124 @@ parseIf = do
   true_ <- parseExpr
   else_ <- expect (isKeyword "else")
   false_ <- parseExpr
-  pure $ ExprIf unit { keyword, cond, then: then_, true: true_, else: else_, false: false_ }
+  pure $ ExprIf { keyword, cond, then: then_, true: true_, else: else_, false: false_ }
 
-parseLetIn :: Parser (Expr Unit)
+parseLetIn :: Parser (Recovered Expr)
 parseLetIn = do
   keyword <- expect (isKeyword "let")
   bindings <- layoutNonEmpty parseLetBinding
   in_ <- expect (isKeyword "in")
   body <- parseExpr
-  pure $ ExprLet unit { keyword, bindings, in: in_, body }
+  pure $ ExprLet { keyword, bindings, in: in_, body }
 
-parseLambda :: Parser (Expr Unit)
+parseLambda :: Parser (Recovered Expr)
 parseLambda = do
   symbol <- token TokBackslash
   binders <- many1 parseBinderAtom
   arrow <- expect isRightArrow
   body <- parseExpr
-  pure $ ExprLambda unit { symbol, binders, arrow, body }
+  pure $ ExprLambda { symbol, binders, arrow, body }
 
-parseCase :: Parser (Expr Unit)
+parseCase :: Parser (Recovered Expr)
 parseCase = do
   keyword <- expect (isKeyword "case")
   head <- separated (token TokComma) parseExpr
   of_ <- expect (isKeyword "of")
   branches <- try parseBadSingleCaseBranch <|> parseCaseBranches
-  pure $ ExprCase unit { keyword, head, of: of_, branches }
+  pure $ ExprCase { keyword, head, of: of_, branches }
 
-parseCaseBranches :: Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseCaseBranches :: Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseCaseBranches = defer \_ ->
   layoutNonEmpty $ Tuple <$> separated (token TokComma) parseBinder1 <*> parseGuarded (expect isRightArrow)
 
-parseBadSingleCaseBranch :: Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseBadSingleCaseBranch :: Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseBadSingleCaseBranch = do
   binder <- token TokLayoutStart *> parseBinder1
   parseBadSingleCaseWhere binder
     <|> parseBadSingleCaseGuarded binder
 
-parseBadSingleCaseWhere :: Binder Unit ->Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseBadSingleCaseWhere :: Recovered Binder -> Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseBadSingleCaseWhere binder = do
   arrow <- expect isRightArrow
   body <- token TokLayoutEnd *> parseWhere
   pure $ NonEmptyArray.singleton $ Tuple (Separated { head: binder, tail: [] }) $ Unconditional arrow body
 
-parseBadSingleCaseGuarded :: Binder Unit ->Parser (NonEmptyArray (Tuple (Separated (Binder Unit)) (Guarded Unit)))
+parseBadSingleCaseGuarded :: Recovered Binder -> Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseBadSingleCaseGuarded binder = do
   body <- token TokLayoutEnd *> parseGuarded (expect isRightArrow)
   pure $ NonEmptyArray.singleton $ Tuple (Separated { head: binder, tail: [] }) body
 
-parseDo :: Parser (Expr Unit)
+parseDo :: Parser (Recovered Expr)
 parseDo = do
   keyword <- expect (isQualifiedKeyword "do")
   statements <- layoutNonEmpty parseDoStatement
-  pure $ ExprDo unit { keyword, statements }
+  pure $ ExprDo { keyword, statements }
 
-parseAdo :: Parser (Expr Unit)
+parseAdo :: Parser (Recovered Expr)
 parseAdo = do
   keyword <- expect (isQualifiedKeyword "ado")
   statements <- layout parseDoStatement
   in_ <- expect (isKeyword "in")
   result <- parseExpr
-  pure $ ExprAdo unit { keyword, statements, in: in_, result }
+  pure $ ExprAdo { keyword, statements, in: in_, result }
 
-parseExpr6 :: Parser (Expr Unit)
+parseExpr6 :: Parser (Recovered Expr)
 parseExpr6 = defer \_ -> do
   expr <- parseExpr7
   parseRecordUpdates expr
     <|> pure expr
 
-parseRecordUpdates :: Expr Unit -> Parser (Expr Unit)
+parseRecordUpdates :: Recovered Expr -> Parser (Recovered Expr)
 parseRecordUpdates expr = do
   open <- try $ token TokLeftBrace <* lookAhead (parseLabel *> (token TokEquals <|> token TokLeftBrace))
   value <- separated (token TokComma) parseRecordUpdate
   close <- token TokRightBrace
-  pure $ ExprRecordUpdate unit expr $ Wrapped { open, value, close }
+  pure $ ExprRecordUpdate expr $ Wrapped { open, value, close }
 
-parseRecordUpdate :: Parser (RecordUpdate Unit)
+parseRecordUpdate :: Parser (Recovered RecordUpdate)
 parseRecordUpdate = do
   label <- parseLabel
   parseRecordUpdateLeaf label
     <|> parseRecordUpdateBranch label
 
-parseRecordUpdateLeaf :: Name Label -> Parser (RecordUpdate Unit)
+parseRecordUpdateLeaf :: Name Label -> Parser (Recovered RecordUpdate)
 parseRecordUpdateLeaf label =
   RecordUpdateLeaf label
     <$> token TokEquals
     <*> parseExpr
 
-parseRecordUpdateBranch :: Name Label -> Parser (RecordUpdate Unit)
+parseRecordUpdateBranch :: Name Label -> Parser (Recovered RecordUpdate)
 parseRecordUpdateBranch label =
   RecordUpdateBranch label
     <$> braces (separated (token TokComma) parseRecordUpdate)
 
-parseExpr7 :: Parser (Expr Unit)
+parseExpr7 :: Parser (Recovered Expr)
 parseExpr7 = defer \_ -> do
   expr <- parseExprAtom
   parseRecordAccessor expr
     <|> pure expr
 
-parseRecordAccessor :: Expr Unit -> Parser (Expr Unit)
+parseRecordAccessor :: Recovered Expr -> Parser (Recovered Expr)
 parseRecordAccessor expr = do
   dot <- token TokDot
   path <- separated (token TokDot) parseLabel
-  pure $ ExprRecordAccessor unit { expr, dot, path }
+  pure $ ExprRecordAccessor { expr, dot, path }
 
-parseExprAtom :: Parser (Expr Unit)
+parseExprAtom :: Parser (Recovered Expr)
 parseExprAtom = defer \_ ->
-  ExprIdent unit <$> parseQualifiedIdent
-    <|> ExprConstructor unit <$> parseQualifiedProper
-    <|> ExprOpName unit <$> parseQualifiedSymbol
-    <|> ExprSection unit <$> token TokUnderscore
-    <|> ExprHole unit <$> parseHole
-    <|> uncurry (ExprString unit) <$> parseString
-    <|> uncurry (ExprChar unit) <$> parseChar
-    <|> uncurry (ExprBoolean unit) <$> parseBoolean
-    <|> uncurry (ExprInt unit) <$> parseInt
-    <|> uncurry (ExprNumber unit) <$> parseNumber
-    <|> ExprArray unit <$> delimited TokLeftSquare TokRightSquare TokComma parseExpr
-    <|> ExprRecord unit <$> delimited TokLeftBrace TokRightBrace TokComma (parseRecordLabeled parseExpr)
-    <|> ExprParens unit <$> parens parseExpr
+  ExprIdent <$> parseQualifiedIdent
+    <|> ExprConstructor <$> parseQualifiedProper
+    <|> ExprOpName <$> parseQualifiedSymbol
+    <|> ExprSection <$> token TokUnderscore
+    <|> ExprHole <$> parseHole
+    <|> uncurry ExprString <$> parseString
+    <|> uncurry ExprChar <$> parseChar
+    <|> uncurry ExprBoolean <$> parseBoolean
+    <|> uncurry ExprInt <$> parseInt
+    <|> uncurry ExprNumber <$> parseNumber
+    <|> ExprArray <$> delimited TokLeftSquare TokRightSquare TokComma parseExpr
+    <|> ExprRecord <$> delimited TokLeftBrace TokRightBrace TokComma (parseRecordLabeled parseExpr)
+    <|> ExprParens <$> parens parseExpr
 
 parseRecordLabeled :: forall a. Parser a -> Parser (RecordLabeled a)
 parseRecordLabeled valueParser =
@@ -699,41 +745,41 @@ parseRecordLabeled valueParser =
       <$> try (Tuple <$> parseLabel <*> expect (isKeyOperator ":"))
       <*> valueParser
 
-parseDoStatement :: Parser (DoStatement Unit)
+parseDoStatement :: Parser (Recovered DoStatement)
 parseDoStatement = defer \_ ->
   DoLet <$> expect (isKeyword "let") <*> layoutNonEmpty parseLetBinding
     <|> uncurry DoBind <$> try (Tuple <$> parseBinder <*> expect isLeftArrow) <*> parseExpr
     <|> DoDiscard <$> parseExpr
 
-parseLetBinding :: Parser (LetBinding Unit)
+parseLetBinding :: Parser (Recovered LetBinding)
 parseLetBinding = defer \_ ->
   try parseIdentBinding
-    <|> LetBindingPattern unit <$> parseBinder1 <*> token TokEquals <*> parseWhere
+    <|> LetBindingPattern <$> parseBinder1 <*> token TokEquals <*> parseWhere
 
-parseIdentBinding :: Parser (LetBinding Unit)
+parseIdentBinding :: Parser (Recovered LetBinding)
 parseIdentBinding = do
   ident <- parseIdent
   parseLetBindingSignature ident
     <|> parseLetBindingName ident
 
-parseLetBindingSignature :: Name Ident -> Parser (LetBinding Unit)
+parseLetBindingSignature :: Name Ident -> Parser (Recovered LetBinding)
 parseLetBindingSignature label = do
   separator <- expect isDoubleColon
   value <- parseType
-  pure $ LetBindingSignature unit $ Labeled { label, separator, value }
+  pure $ LetBindingSignature $ Labeled { label, separator, value }
 
-parseLetBindingName :: Name Ident -> Parser (LetBinding Unit)
+parseLetBindingName :: Name Ident -> Parser (Recovered LetBinding)
 parseLetBindingName name = do
   binders <- many parseBinderAtom
   guarded <- parseGuarded (token TokEquals)
-  pure $ LetBindingName unit { name, binders, guarded }
+  pure $ LetBindingName { name, binders, guarded }
 
-parseGuarded :: Parser SourceToken -> Parser (Guarded Unit)
+parseGuarded :: Parser SourceToken -> Parser (Recovered Guarded)
 parseGuarded sepParser =
   Unconditional <$> sepParser <*> parseWhere
     <|> Guarded <$> many1 parseGuardedExpr
   where
-  parseGuardedExpr :: Parser (GuardedExpr Unit)
+  parseGuardedExpr :: Parser (Recovered GuardedExpr)
   parseGuardedExpr =
     { bar: _, patterns: _, separator: _, where: _ }
       <$> token TokPipe
@@ -741,73 +787,67 @@ parseGuarded sepParser =
       <*> sepParser
       <*> parseWhere
 
-  parsePatternGuard :: Parser (PatternGuard Unit)
+  parsePatternGuard :: Parser (Recovered PatternGuard)
   parsePatternGuard =
     { binder: _, expr: _ }
       <$> optional (try (Tuple <$> parseBinder <*> expect isLeftArrow))
       <*> parseExpr
 
-parseWhere :: Parser (Where Unit)
+parseWhere :: Parser (Recovered Where)
 parseWhere = defer \_ ->
   { expr: _, bindings: _ }
     <$> parseExpr
     <*> optional (Tuple <$> expect (isKeyword "where") <*> layoutNonEmpty parseLetBinding)
 
-parseBinder :: Parser (Binder Unit)
+parseBinder :: Parser (Recovered Binder)
 parseBinder = defer \_ -> do
   binder <- parseBinder1
-  BinderTyped unit binder <$> expect isDoubleColon <*> parseType
+  BinderTyped binder <$> expect isDoubleColon <*> parseType
     <|> pure binder
 
-parseBinder1 :: Parser (Binder Unit)
+parseBinder1 :: Parser (Recovered Binder)
 parseBinder1 = defer \_ ->
-  foldl (\a (Tuple op b) -> BinderOp unit a op b)
+  foldl (\a (Tuple op b) -> BinderOp a op b)
     <$> parseBinder2
     <*> many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
 
-parseBinder2 :: Parser (Binder Unit)
+parseBinder2 :: Parser (Recovered Binder)
 parseBinder2 = defer \_ ->
   parseBinderNegative
     <|> parseBinderConstructor
+    <|> parseBinderAtom
 
-parseBinderNegative :: Parser (Binder Unit)
+parseBinderNegative :: Parser (Recovered Binder)
 parseBinderNegative =  do
   negative <- expect (isKeyOperator "-")
-  uncurry (BinderInt unit (Just negative)) <$> parseInt
-    <|> uncurry (BinderNumber unit (Just negative)) <$> parseNumber
+  uncurry (BinderInt (Just negative)) <$> parseInt
+    <|> uncurry (BinderNumber (Just negative)) <$> parseNumber
 
-parseBinderConstructor :: Parser (Binder Unit)
+parseBinderConstructor :: Parser (Recovered Binder)
 parseBinderConstructor = defer \_ -> do
-  binder <- parseBinderAtom
+  name <- parseQualifiedProper
   apps <- many parseBinderAtom
-  case binder, apps of
-    _, [] ->
-      pure binder
-    BinderConstructor _ name _, _ ->
-      pure $ BinderConstructor unit name apps
-    _, _ ->
-      -- TODO
-      fail { line: 0, column: 0 } $ UnexpectedEof
+  pure $ BinderConstructor name apps
 
-parseBinderAtom :: Parser (Binder Unit)
+parseBinderAtom :: Parser (Recovered Binder)
 parseBinderAtom = defer \_ ->
   parseIdentBinder
-    <|> flip (BinderConstructor unit) [] <$> parseQualifiedProper
-    <|> BinderWildcard unit <$> token TokUnderscore
-    <|> uncurry (BinderString unit) <$> parseString
-    <|> uncurry (BinderChar unit) <$> parseChar
-    <|> uncurry (BinderBoolean unit) <$> parseBoolean
-    <|> uncurry (BinderInt unit Nothing) <$> parseInt
-    <|> uncurry (BinderNumber unit Nothing) <$>  parseNumber
-    <|> BinderArray unit <$> delimited TokLeftSquare TokRightSquare TokComma parseBinder
-    <|> BinderRecord unit <$> delimited TokLeftBrace TokRightBrace TokComma (parseRecordLabeled parseBinder)
-    <|> BinderParens unit <$> parens parseBinder
+    <|> flip BinderConstructor [] <$> parseQualifiedProper
+    <|> BinderWildcard <$> token TokUnderscore
+    <|> uncurry BinderString <$> parseString
+    <|> uncurry BinderChar <$> parseChar
+    <|> uncurry BinderBoolean <$> parseBoolean
+    <|> uncurry (BinderInt Nothing) <$> parseInt
+    <|> uncurry (BinderNumber Nothing) <$>  parseNumber
+    <|> BinderArray <$> delimited TokLeftSquare TokRightSquare TokComma parseBinder
+    <|> BinderRecord <$> delimited TokLeftBrace TokRightBrace TokComma (parseRecordLabeled parseBinder)
+    <|> BinderParens <$> parens parseBinder
 
-parseIdentBinder :: Parser (Binder Unit)
+parseIdentBinder :: Parser (Recovered Binder)
 parseIdentBinder = do
   ident <- parseIdent
-  BinderNamed unit ident <$> token TokAt <*> parseBinderAtom
-    <|> pure (BinderVar unit ident)
+  BinderNamed ident <$> token TokAt <*> parseBinderAtom
+    <|> pure (BinderVar ident)
 
 parseLabel :: Parser (Name Label)
 parseLabel = expectMap case _ of
@@ -1004,3 +1044,32 @@ reservedKeywords = Set.fromFoldable
   , "type"
   , "where"
   ]
+
+recoverTopLevelLayout :: forall a. (PositionedError -> Array SourceToken -> a) -> Parser a -> Parser a
+recoverTopLevelLayout mkNode = recover \err ->
+  map (mkNode err) <<< recoverTokensWhile \tok ->
+    case tok.value of
+      TokLayoutEnd
+        | tok.range.start.column == 0 -> false
+      TokLayoutSep
+        | tok.range.start.column == 0 -> false
+      _ -> true
+
+recoverTokensWhile :: (SourceToken -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
+recoverTokensWhile p = go []
+  where
+  go :: Array SourceToken -> TokenStream -> Recovery (Array SourceToken)
+  go acc stream = case TokenStream.step stream of
+    TokenError errPos err errStream ->
+      Recovery acc errPos stream
+    TokenEOF eofPos _ ->
+      Recovery acc eofPos stream
+    TokenCons tok nextPos nextStream
+      | p tok ->
+          go (Array.snoc acc tok) nextStream
+      | otherwise ->
+          Recovery acc tok.range.start stream
+
+recoverDecl :: RecoveryStrategy Declaration
+recoverDecl = recoverTopLevelLayout \{ error, position } tokens ->
+  DeclError { error, position, tokens }

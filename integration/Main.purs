@@ -19,6 +19,7 @@ import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
+import Data.Tuple (Tuple, snd)
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -34,6 +35,7 @@ import Node.FS.Stats as FS
 import Node.Path (FilePath)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Lexer (lex)
+import PureScript.CST.Parser (Recovered)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
 import PureScript.CST.TokenStream (TokenStream)
@@ -71,17 +73,23 @@ main = runAff_ (either throwException mempty) do
     pure result
 
   let
-    partition = moduleResults # partitionMap \{ path, parseError, duration } -> case parseError of
-      Just parseError' -> Left { path, parseError: parseError', duration }
-      Nothing-> Right { path, duration }
+    partition = moduleResults # partitionMap \{ path, errors, duration } ->
+      if Array.null errors then
+        Right { path, duration }
+      else
+        Left { path, errors, duration }
 
   liftEffect $ forWithIndex_ partition.left \ix failed -> do
     let
       message = Array.intercalate "\n"
         [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> ". Failed in "<> formatMs failed.duration <> " ] ----"
         , ""
-        , "  " <> failed.path <> ":" <> show (failed.parseError.position.line + 1) <> ":" <> show (failed.parseError.position.column + 1)
-        , "  " <> printParseError failed.parseError.error <> " at line " <> show (failed.parseError.position.line + 1) <> ", column " <> show (failed.parseError.position.column + 1)
+        , Array.intercalate "\n" $ foldMap formatError failed.errors
+        ]
+
+      formatError error =
+        [ "  " <> failed.path <> ":" <> show (error.position.line + 1) <> ":" <> show (error.position.column + 1)
+        , "  " <> printParseError error.error <> " at line " <> show (error.position.line + 1) <> ", column " <> show (error.position.column + 1)
         , ""
         ]
     Console.error message
@@ -126,7 +134,7 @@ getPursFiles depth root = do
 
 type ModuleResult =
   { path :: FilePath
-  , parseError :: Maybe PositionedError
+  , errors :: Array PositionedError
   , duration :: Milliseconds
   }
 
@@ -139,11 +147,11 @@ parseModuleFromFile path = do
   let durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
   pure
     { path
-    , parseError: either Just (const Nothing) parsed
+    , errors: either pure snd parsed
     , duration: durationMillis
     }
 
-parse :: TokenStream -> Either PositionedError (Module Unit)
+parse :: TokenStream -> Either PositionedError (Tuple (Recovered Module) (Array PositionedError))
 parse tokenStream =
   runParser tokenStream Parser.parseModule
 
