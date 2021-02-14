@@ -170,6 +170,8 @@ newtype Row a = Row
   , tail :: Maybe (Tuple SourceToken (Type a))
   }
 
+derive instance newtypeRow :: Newtype (Row a) _
+
 data Module a = Module
   { ann :: a
   , keyword :: SourceToken
