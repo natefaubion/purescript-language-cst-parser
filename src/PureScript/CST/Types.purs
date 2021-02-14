@@ -193,6 +193,8 @@ newtype ModuleBody e = ModuleBody
   , trailingComments :: Array (Comment LineFeed)
   }
 
+derive instance newtypeModuleBody :: Newtype (ModuleBody e) _
+
 data Export e
   = ExportValue (Name Ident)
   | ExportOp (Name Operator)

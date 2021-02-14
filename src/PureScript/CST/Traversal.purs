@@ -5,7 +5,7 @@ import Prelude
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
-import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
+import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
 type Rewrite e f g = g e -> f (g e)
@@ -29,14 +29,16 @@ traverseModule
   => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Module
 traverseModule k (Module mod) = Module <<<
-  { keyword: mod.keyword
-  , name: mod.name
-  , exports: mod.exports
-  , where: mod.where
-  , imports: mod.imports
-  , trailingComments: mod.trailingComments
-  , decls: _
-  } <$> traverse (traverseDecl k) mod.decls
+  { header: mod.header
+  , body: _
+  } <$> traverseModuleBody k mod.body
+
+traverseModuleBody
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f ModuleBody
+traverseModuleBody k = Newtype.traverse ModuleBody (\b -> b { decls = _ } <$> traverse (traverseDecl k) b.decls)
 
 traverseDecl
   :: forall e f r
