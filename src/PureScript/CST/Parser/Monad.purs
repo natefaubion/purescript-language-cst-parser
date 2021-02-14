@@ -23,6 +23,7 @@ import Data.Array as Array
 import Data.Either (Either(..))
 import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
 import PureScript.CST.TokenStream as TokenStream
@@ -150,17 +151,17 @@ eof = Eof identity
 recover :: forall a. (PositionedError -> TokenStream -> Recovery a) -> Parser a -> Parser a
 recover = Recover
 
-runParser :: forall a. TokenStream -> Parser a -> Either PositionedError a
+runParser :: forall a. TokenStream -> Parser a -> Either PositionedError (Tuple a (Array PositionedError))
 runParser stream parser =
   case runParser' stream parser of
-    ParseFail error position _ _ ->
+    ParseFail error position _ _ _ ->
       Left { position, error }
-    ParseSucc res _ _ _ ->
-      Right res
+    ParseSucc res _ _ _ errors ->
+      Right (Tuple res errors)
 
 data ParserResult a
-  = ParseFail ParseError SourcePos Boolean (Maybe TokenStream)
-  | ParseSucc a SourcePos Boolean TokenStream
+  = ParseFail ParseError SourcePos Boolean (Maybe TokenStream) (Array PositionedError)
+  | ParseSucc a SourcePos Boolean TokenStream (Array PositionedError)
 
 data ParserStack a
   = StkNil
@@ -201,7 +202,7 @@ runParser' = \stream parser ->
       (unsafeCoerce parser)
   where
   go :: ParserStack UnsafeBoundValue -> ParserState -> Parser UnsafeBoundValue -> ParserResult UnsafeBoundValue
-  go stack state = case _ of
+  go stack state@{ errors } = case _ of
     Alt a b ->
       go (StkAlt stack state b) (state { consumed = false }) a
     Try a ->
@@ -231,7 +232,7 @@ runParser' = \stream parser ->
     Take k ->
       case TokenStream.step state.stream of
         TokenError errPos err errStream ->
-          ParseFail err errPos state.consumed errStream
+          ParseFail err errPos state.consumed errStream errors
         TokenEOF errPos _ ->
           go stack state (Fail errPos UnexpectedEof)
         TokenCons tok nextPos nextStream ->
@@ -239,11 +240,11 @@ runParser' = \stream parser ->
             Left err ->
               go stack state (Fail tok.range.start err)
             Right a ->
-              go stack { consumed: true, position: nextPos, stream: nextStream } (Pure a)
+              go stack { consumed: true, errors, position: nextPos, stream: nextStream } (Pure a)
     Eof k ->
       case TokenStream.step state.stream of
         TokenError errPos err errStream ->
-          ParseFail err errPos state.consumed errStream
+          ParseFail err errPos state.consumed errStream errors
         TokenEOF eofPos comments ->
           go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
         TokenCons tok _ _ ->
@@ -254,28 +255,35 @@ runParser' = \stream parser ->
       go (StkRecover stack state k) state p
 
   unwindFail :: ParseError -> SourcePos -> ParserState -> ParserStack UnsafeBoundValue -> FailUnwind UnsafeBoundValue
-  unwindFail err errPos state = case _ of
+  unwindFail error position state@{ errors } = case _ of
     StkNil ->
-      FailStop (ParseFail err errPos state.consumed (Just state.stream))
+      FailStop (ParseFail error position state.consumed (Just state.stream) errors)
     StkAlt prevStack prevState prev ->
       if state.consumed then
-        unwindFail err errPos state prevStack
+        unwindFail error position state prevStack
       else
-        FailAlt prevStack prevState prev
+        FailAlt prevStack (prevState { errors = errors }) prev
     StkTry prevStack prevState ->
-      unwindFail err errPos (state { consumed = prevState.consumed }) prevStack
+      unwindFail error position (state { consumed = prevState.consumed }) prevStack
     StkRecover prevStack prevState k -> do
-      let (Recovery a nextPos nextStream) = k { error: err, position: errPos } prevState.stream
-      FailRecover prevStack { consumed: true, position: nextPos, stream: nextStream } a
+      let posError = { error, position }
+      let nextErrors = Array.snoc errors posError
+      let (Recovery a nextPos nextStream) = k posError prevState.stream
+      FailRecover prevStack
+        { consumed: true
+        , errors: nextErrors
+        , position: nextPos
+        , stream: nextStream
+        } a
     StkLookAhead prevStack prevState ->
-      unwindFail err errPos prevState prevStack
+      unwindFail error position prevState prevStack
     StkBinds prevStack _ ->
-      unwindFail err errPos state prevStack
+      unwindFail error position state prevStack
 
   unwindSucc :: UnsafeBoundValue -> ParserState -> ParserStack UnsafeBoundValue -> SuccUnwind UnsafeBoundValue
   unwindSucc a state = case _ of
     StkNil ->
-      SuccStop (ParseSucc a state.position state.consumed state.stream)
+      SuccStop (ParseSucc a state.position state.consumed state.stream state.errors)
     StkAlt prevStack _ _ ->
       unwindSucc a state prevStack
     StkTry prevStack _ ->

@@ -138,115 +138,115 @@ data OneOrDelimited a
   = One a
   | Many (DelimitedNonEmpty a)
 
-data Type a
-  = TypeVar a (Name Ident)
-  | TypeConstructor a (QualifiedName Proper)
-  | TypeWildcard a SourceToken
-  | TypeHole a (Name Ident)
-  | TypeString a SourceToken String
-  | TypeRow a (Wrapped (Row a))
-  | TypeRecord a (Wrapped (Row a))
-  | TypeForall a SourceToken (NonEmptyArray (TypeVarBinding a)) SourceToken (Type a)
-  | TypeKinded a (Type a) SourceToken (Type a)
-  | TypeApp a (Type a) (Type a)
-  | TypeOp a (Type a) (QualifiedName Operator) (Type a)
-  | TypeOpName a (QualifiedName Operator)
-  | TypeArr a (Type a) SourceToken (Type a)
-  | TypeArrName a SourceToken
-  | TypeConstrained a (Type a) SourceToken (Type a)
-  | TypeParens a (Wrapped (Type a))
-  | TypeUnaryRow a SourceToken (Type a)
+data Type e
+  = TypeVar (Name Ident)
+  | TypeConstructor (QualifiedName Proper)
+  | TypeWildcard SourceToken
+  | TypeHole (Name Ident)
+  | TypeString SourceToken String
+  | TypeRow (Wrapped (Row e))
+  | TypeRecord (Wrapped (Row e))
+  | TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)
+  | TypeKinded (Type e) SourceToken (Type e)
+  | TypeApp (Type e) (Type e)
+  | TypeOp (Type e) (QualifiedName Operator) (Type e)
+  | TypeOpName (QualifiedName Operator)
+  | TypeArr (Type e) SourceToken (Type e)
+  | TypeArrName SourceToken
+  | TypeConstrained (Type e) SourceToken (Type e)
+  | TypeParens (Wrapped (Type e))
+  | TypeUnaryRow SourceToken (Type e)
+  | TypeError e
 
-data TypeVarBinding a
-  = TypeVarKinded (Wrapped (Labeled (Name Ident) (Type a)))
+data TypeVarBinding e
+  = TypeVarKinded (Wrapped (Labeled (Name Ident) (Type e)))
   | TypeVarName (Name Ident)
 
-newtype Row a = Row
-  { labels :: Maybe (Separated (Labeled (Name Label) (Type a)))
-  , tail :: Maybe (Tuple SourceToken (Type a))
+newtype Row e = Row
+  { labels :: Maybe (Separated (Labeled (Name Label) (Type e)))
+  , tail :: Maybe (Tuple SourceToken (Type e))
   }
 
-data Module e a = Module
-  { ann :: a
-  , keyword :: SourceToken
+data Module e = Module
+  { keyword :: SourceToken
   , name :: Name ModuleName
-  , exports :: Maybe (DelimitedNonEmpty (Export a))
+  , exports :: Maybe (DelimitedNonEmpty (Export e))
   , where :: SourceToken
-  , imports :: Array (ImportDecl a)
-  , decls :: Array (Declaration e a)
+  , imports :: Array (ImportDecl e)
+  , decls :: Array (Declaration e)
   , trailingComments :: Array (Comment LineFeed)
   }
 
-data Export a
-  = ExportValue a (Name Ident)
-  | ExportOp a (Name Operator)
-  | ExportType a (Name Proper) (Maybe (DataMembers a))
-  | ExportTypeOp a SourceToken (Name Operator)
-  | ExportClass a SourceToken (Name Proper)
-  | ExportKind a SourceToken (Name Proper)
-  | ExportModule a SourceToken (Name ModuleName)
+data Export e
+  = ExportValue (Name Ident)
+  | ExportOp (Name Operator)
+  | ExportType (Name Proper) (Maybe DataMembers)
+  | ExportTypeOp SourceToken (Name Operator)
+  | ExportClass SourceToken (Name Proper)
+  | ExportKind SourceToken (Name Proper)
+  | ExportModule SourceToken (Name ModuleName)
+  | ExportError e
 
-data DataMembers a
-  = DataAll a SourceToken
-  | DataEnumerated a (Delimited (Name Proper))
+data DataMembers
+  = DataAll SourceToken
+  | DataEnumerated (Delimited (Name Proper))
 
-data Declaration e a
-  = DeclData a (DataHead a) (Maybe (Tuple SourceToken (Separated (DataCtor a))))
-  | DeclType a (DataHead a) SourceToken (Type a)
-  | DeclNewtype a (DataHead a) SourceToken (Name Proper) (Type a)
-  | DeclClass a (ClassHead a) (Maybe (Tuple SourceToken (NonEmptyArray (Labeled (Name Ident) (Type a)))))
-  | DeclInstanceChain a (Separated (Instance a))
-  | DeclDerive a SourceToken (Maybe SourceToken) (InstanceHead a)
-  | DeclKindSignature a SourceToken (Labeled (Name Proper) (Type a))
-  | DeclSignature a (Labeled (Name Ident) (Type a))
-  | DeclValue a (ValueBindingFields a)
-  | DeclFixity a FixityFields
-  | DeclForeign a SourceToken SourceToken (Foreign a)
-  | DeclRole a SourceToken SourceToken (Name Proper) (NonEmptyArray (Tuple SourceToken Role))
+data Declaration e
+  = DeclData (DataHead e) (Maybe (Tuple SourceToken (Separated (DataCtor e))))
+  | DeclType (DataHead e) SourceToken (Type e)
+  | DeclNewtype (DataHead e) SourceToken (Name Proper) (Type e)
+  | DeclClass (ClassHead e) (Maybe (Tuple SourceToken (NonEmptyArray (Labeled (Name Ident) (Type e)))))
+  | DeclInstanceChain (Separated (Instance e))
+  | DeclDerive SourceToken (Maybe SourceToken) (InstanceHead e)
+  | DeclKindSignature SourceToken (Labeled (Name Proper) (Type e))
+  | DeclSignature (Labeled (Name Ident) (Type e))
+  | DeclValue (ValueBindingFields e)
+  | DeclFixity FixityFields
+  | DeclForeign SourceToken SourceToken (Foreign e)
+  | DeclRole SourceToken SourceToken (Name Proper) (NonEmptyArray (Tuple SourceToken Role))
   | DeclError e
 
-newtype Instance a = Instance
-  { head :: InstanceHead a
-  , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding a)))
+newtype Instance e = Instance
+  { head :: InstanceHead e
+  , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding e)))
   }
 
-data InstanceBinding a
-  = InstanceBindingSignature a (Labeled (Name Ident) (Type a))
-  | InstanceBindingName a (ValueBindingFields a)
+data InstanceBinding e
+  = InstanceBindingSignature (Labeled (Name Ident) (Type e))
+  | InstanceBindingName (ValueBindingFields e)
 
-newtype ImportDecl a = ImportDecl
-  { ann :: a
-  , keyword :: SourceToken
+newtype ImportDecl e = ImportDecl
+  { keyword :: SourceToken
   , module :: Name ModuleName
-  , names :: Maybe (Tuple (Maybe SourceToken) (DelimitedNonEmpty (Import a)))
+  , names :: Maybe (Tuple (Maybe SourceToken) (DelimitedNonEmpty (Import e)))
   , qualified :: Maybe (Tuple SourceToken (Name ModuleName))
   }
 
-data Import a
-  = ImportValue a (Name Ident)
-  | ImportOp a (Name Operator)
-  | ImportType a (Name Proper) (Maybe (DataMembers a))
-  | ImportTypeOp a SourceToken (Name Operator)
-  | ImportClass a SourceToken (Name Proper)
-  | ImportKind a SourceToken (Name Proper)
+data Import e
+  = ImportValue (Name Ident)
+  | ImportOp (Name Operator)
+  | ImportType (Name Proper) (Maybe DataMembers)
+  | ImportTypeOp SourceToken (Name Operator)
+  | ImportClass SourceToken (Name Proper)
+  | ImportKind SourceToken (Name Proper)
+  | ImportError e
 
-type DataHead a =
+type DataHead e =
   { keyword :: SourceToken
   , name :: Name Proper
-  , vars :: Array (TypeVarBinding a)
+  , vars :: Array (TypeVarBinding e)
   }
 
-type DataCtor a =
-  { ann :: a
-  , name :: Name Proper
-  , fields :: Array (Type a)
+type DataCtor e =
+  { name :: Name Proper
+  , fields :: Array (Type e)
   }
 
-type ClassHead a =
+type ClassHead e =
   { keyword :: SourceToken
-  , super :: Maybe (Tuple (OneOrDelimited (Type a)) SourceToken)
+  , super :: Maybe (Tuple (OneOrDelimited (Type e)) SourceToken)
   , name :: Name Proper
-  , vars :: Array (TypeVarBinding a)
+  , vars :: Array (TypeVarBinding e)
   , fundeps :: Maybe (Tuple SourceToken (Separated ClassFundep))
   }
 
@@ -254,13 +254,13 @@ data ClassFundep
   = FundepDetermined SourceToken (NonEmptyArray (Name Ident))
   | FundepDetermines (NonEmptyArray (Name Ident)) SourceToken (NonEmptyArray (Name Ident))
 
-type InstanceHead a =
+type InstanceHead e =
   { keyword :: SourceToken
   , name :: Name Ident
   , separator :: SourceToken
-  , constraints :: Maybe (Tuple (OneOrDelimited (Type a)) SourceToken)
+  , constraints :: Maybe (Tuple (OneOrDelimited (Type e)) SourceToken)
   , className :: QualifiedName Proper
-  , types :: Array (Type a)
+  , types :: Array (Type e)
   }
 
 data Fixity
@@ -278,31 +278,31 @@ type FixityFields =
   , operator :: FixityOp
   }
 
-type ValueBindingFields a =
+type ValueBindingFields e =
   { name :: Name Ident
-  , binders :: Array (Binder a)
-  , guarded :: Guarded a
+  , binders :: Array (Binder e)
+  , guarded :: Guarded e
   }
 
-data Guarded a
-  = Unconditional SourceToken (Where a)
-  | Guarded (NonEmptyArray (GuardedExpr a))
+data Guarded e
+  = Unconditional SourceToken (Where e)
+  | Guarded (NonEmptyArray (GuardedExpr e))
 
-type GuardedExpr a =
+type GuardedExpr e =
   { bar :: SourceToken
-  , patterns :: Separated (PatternGuard a)
+  , patterns :: Separated (PatternGuard e)
   , separator :: SourceToken
-  , where :: Where a
+  , where :: Where e
   }
 
-type PatternGuard a =
-  { binder :: Maybe (Tuple (Binder a) SourceToken)
-  , expr :: Expr a
+type PatternGuard e =
+  { binder :: Maybe (Tuple (Binder e) SourceToken)
+  , expr :: Expr e
   }
 
-data Foreign a
-  = ForeignValue (Labeled (Name Ident) (Type a))
-  | ForeignData SourceToken (Labeled (Name Proper) (Type a))
+data Foreign e
+  = ForeignValue (Labeled (Name Ident) (Type e))
+  | ForeignData SourceToken (Labeled (Name Proper) (Type e))
   | ForeignKind SourceToken (Name Proper)
 
 data Role
@@ -310,117 +310,119 @@ data Role
   | Representational
   | Phantom
 
-data Expr a
-  = ExprHole a (Name Ident)
-  | ExprSection a SourceToken
-  | ExprIdent a (QualifiedName Ident)
-  | ExprConstructor a (QualifiedName Proper)
-  | ExprBoolean a SourceToken Boolean
-  | ExprChar a SourceToken Char
-  | ExprString a SourceToken String
-  | ExprInt a SourceToken Int
-  | ExprNumber a SourceToken Number
-  | ExprArray a (Delimited (Expr a))
-  | ExprRecord a (Delimited (RecordLabeled (Expr a)))
-  | ExprParens a (Wrapped (Expr a))
-  | ExprTyped a (Expr a) SourceToken (Type a)
-  | ExprInfix a (Expr a) (Wrapped (Expr a)) (Expr a)
-  | ExprOp a (Expr a) (QualifiedName Operator) (Expr a)
-  | ExprOpName a (QualifiedName Operator)
-  | ExprNegate a SourceToken (Expr a)
-  | ExprRecordAccessor a (RecordAccessor a)
-  | ExprRecordUpdate a (Expr a) (DelimitedNonEmpty (RecordUpdate a))
-  | ExprApp a (Expr a) (Expr a)
-  | ExprLambda a (Lambda a)
-  | ExprIf a (IfThenElse a)
-  | ExprCase a (CaseOf a)
-  | ExprLet a (LetIn a)
-  | ExprDo a (DoBlock a)
-  | ExprAdo a (AdoBlock a)
+data Expr e
+  = ExprHole (Name Ident)
+  | ExprSection SourceToken
+  | ExprIdent (QualifiedName Ident)
+  | ExprConstructor (QualifiedName Proper)
+  | ExprBoolean SourceToken Boolean
+  | ExprChar SourceToken Char
+  | ExprString SourceToken String
+  | ExprInt SourceToken Int
+  | ExprNumber SourceToken Number
+  | ExprArray (Delimited (Expr e))
+  | ExprRecord (Delimited (RecordLabeled (Expr e)))
+  | ExprParens (Wrapped (Expr e))
+  | ExprTyped (Expr e) SourceToken (Type e)
+  | ExprInfix (Expr e) (Wrapped (Expr e)) (Expr e)
+  | ExprOp (Expr e) (QualifiedName Operator) (Expr e)
+  | ExprOpName (QualifiedName Operator)
+  | ExprNegate SourceToken (Expr e)
+  | ExprRecordAccessor (RecordAccessor e)
+  | ExprRecordUpdate (Expr e) (DelimitedNonEmpty (RecordUpdate e))
+  | ExprApp (Expr e) (Expr e)
+  | ExprLambda (Lambda e)
+  | ExprIf (IfThenElse e)
+  | ExprCase (CaseOf e)
+  | ExprLet (LetIn e)
+  | ExprDo (DoBlock e)
+  | ExprAdo (AdoBlock e)
+  | ExprError e
 
 data RecordLabeled a
   = RecordPun (Name Ident)
   | RecordField (Name Label) SourceToken a
 
-data RecordUpdate a
-  = RecordUpdateLeaf (Name Label) SourceToken (Expr a)
-  | RecordUpdateBranch (Name Label) (DelimitedNonEmpty (RecordUpdate a))
+data RecordUpdate e
+  = RecordUpdateLeaf (Name Label) SourceToken (Expr e)
+  | RecordUpdateBranch (Name Label) (DelimitedNonEmpty (RecordUpdate e))
 
-type RecordAccessor a =
-  { expr :: Expr a
+type RecordAccessor e =
+  { expr :: Expr e
   , dot :: SourceToken
   , path :: Separated (Name Label)
   }
 
-type Lambda a =
+type Lambda e =
   { symbol :: SourceToken
-  , binders :: NonEmptyArray (Binder a)
+  , binders :: NonEmptyArray (Binder e)
   , arrow :: SourceToken
-  , body :: Expr a
+  , body :: Expr e
   }
 
-type IfThenElse a =
+type IfThenElse e =
   { keyword :: SourceToken
-  , cond :: Expr a
+  , cond :: Expr e
   , then :: SourceToken
-  , true :: Expr a
+  , true :: Expr e
   , else :: SourceToken
-  , false :: Expr a
+  , false :: Expr e
   }
 
-type CaseOf a =
+type CaseOf e =
   { keyword :: SourceToken
-  , head :: Separated (Expr a)
+  , head :: Separated (Expr e)
   , of :: SourceToken
-  , branches :: NonEmptyArray (Tuple (Separated (Binder a)) (Guarded a))
+  , branches :: NonEmptyArray (Tuple (Separated (Binder e)) (Guarded e))
   }
 
-type LetIn a =
+type LetIn e =
   { keyword :: SourceToken
-  , bindings :: NonEmptyArray (LetBinding a)
+  , bindings :: NonEmptyArray (LetBinding e)
   , in :: SourceToken
-  , body :: Expr a
+  , body :: Expr e
   }
 
-type Where a =
-  { expr :: Expr a
-  , bindings :: Maybe (Tuple SourceToken (NonEmptyArray (LetBinding a)))
+type Where e =
+  { expr :: Expr e
+  , bindings :: Maybe (Tuple SourceToken (NonEmptyArray (LetBinding e)))
   }
 
-data LetBinding a
-  = LetBindingSignature a (Labeled (Name Ident) (Type a))
-  | LetBindingName a (ValueBindingFields a)
-  | LetBindingPattern a (Binder a) SourceToken (Where a)
+data LetBinding e
+  = LetBindingSignature (Labeled (Name Ident) (Type e))
+  | LetBindingName (ValueBindingFields e)
+  | LetBindingPattern (Binder e) SourceToken (Where e)
 
-type DoBlock a =
+type DoBlock e =
   { keyword :: SourceToken
-  , statements :: NonEmptyArray (DoStatement a)
+  , statements :: NonEmptyArray (DoStatement e)
   }
 
-data DoStatement a
-  = DoLet SourceToken (NonEmptyArray (LetBinding a))
-  | DoDiscard (Expr a)
-  | DoBind (Binder a) SourceToken (Expr a)
+data DoStatement e
+  = DoLet SourceToken (NonEmptyArray (LetBinding e))
+  | DoDiscard (Expr e)
+  | DoBind (Binder e) SourceToken (Expr e)
 
-type AdoBlock a =
+type AdoBlock e =
   { keyword :: SourceToken
-  , statements :: Array (DoStatement a)
+  , statements :: Array (DoStatement e)
   , in :: SourceToken
-  , result :: Expr a
+  , result :: Expr e
   }
 
-data Binder a
-  = BinderWildcard a SourceToken
-  | BinderVar a (Name Ident)
-  | BinderNamed a (Name Ident) SourceToken (Binder a)
-  | BinderConstructor a (QualifiedName Proper) (Array (Binder a))
-  | BinderBoolean a SourceToken Boolean
-  | BinderChar a SourceToken Char
-  | BinderString a SourceToken String
-  | BinderInt a (Maybe SourceToken) SourceToken Int
-  | BinderNumber a (Maybe SourceToken) SourceToken Number
-  | BinderArray a (Delimited (Binder a))
-  | BinderRecord a (Delimited (RecordLabeled (Binder a)))
-  | BinderParens a (Wrapped (Binder a))
-  | BinderTyped a (Binder a) SourceToken (Type a)
-  | BinderOp a (Binder a) (QualifiedName Operator) (Binder a)
+data Binder e
+  = BinderWildcard SourceToken
+  | BinderVar (Name Ident)
+  | BinderNamed (Name Ident) SourceToken (Binder e)
+  | BinderConstructor (QualifiedName Proper) (Array (Binder e))
+  | BinderBoolean SourceToken Boolean
+  | BinderChar SourceToken Char
+  | BinderString SourceToken String
+  | BinderInt (Maybe SourceToken) SourceToken Int
+  | BinderNumber (Maybe SourceToken) SourceToken Number
+  | BinderArray (Delimited (Binder e))
+  | BinderRecord (Delimited (RecordLabeled (Binder e)))
+  | BinderParens (Wrapped (Binder e))
+  | BinderTyped (Binder e) SourceToken (Type e)
+  | BinderOp (Binder e) (QualifiedName Operator) (Binder e)
+  | BinderError e
