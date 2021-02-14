@@ -2,10 +2,11 @@ module PureScript.CST.Traversal where
 
 import Prelude
 
+import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple)
+import Data.Tuple (Tuple, uncurry)
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
@@ -391,3 +392,31 @@ rewriteModuleBottomUpM = traverseModule <<< bottomUpTraversal
 
 rewriteModuleTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
 rewriteModuleTopDownM = traverseModule <<< topDownTraversal
+
+
+-- TODO: Everything below here is probably nonsense.
+
+topDownTraversalWithContext
+  :: forall c m e
+   . Monad m
+  => { | OnPureScript (Rewrite e m) }
+  -> { | OnPureScript (RewriteWithContext c e m) }
+topDownTraversalWithContext visitor = visitor'
+  where
+  goBinder a = ReaderT \ctx -> visitor'.onBinder ctx a >>= uncurry (flip (runReaderT <<< goBinder))
+
+  goExpr a = ReaderT \ctx -> visitor'.onExpr ctx a >>= uncurry (flip (runReaderT <<< goExpr))
+
+  goDecl a = ReaderT \ctx -> visitor'.onDecl ctx a >>= uncurry (flip (runReaderT <<< goDecl))
+
+  goType a = ReaderT \ctx -> visitor'.onType ctx a >>= uncurry (flip (runReaderT <<< goType))
+
+  visitor' =
+    { onBinder: \c a -> runReaderT (goBinder a) c
+    , onExpr: \c a -> runReaderT (goExpr a) c
+    , onDecl: \c a -> runReaderT (goDecl a) c
+    , onType: \c a -> runReaderT (goType a) c
+    }
+
+--rewriteExprWithContextM :: forall c e m. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Module
+--rewriteExprWithContextM visitors = ?a --(topDownTraversalWithContext visitors)
