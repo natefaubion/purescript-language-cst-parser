@@ -5,10 +5,12 @@ import Prelude
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
+import Data.Tuple (Tuple)
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
 type Rewrite e f g = g e -> f (g e)
+type RewriteWithContext c e f g = c -> g e -> f (Tuple c (g e))
 
 type OnBinder t r = (onBinder :: t Binder | r)
 type OnDecl t r = (onDecl :: t Declaration | r)
@@ -364,8 +366,8 @@ bottomUpTraversal
 bottomUpTraversal visitor = visitor'
   where
   visitor' =
-    { onExpr:   \a -> visitor.onExpr   =<< traverseExpr visitor' a
-    , onBinder: \a -> visitor.onBinder =<< traverseBinder visitor' a
+    { onBinder: \a -> visitor.onBinder =<< traverseBinder visitor' a
+    , onExpr:   \a -> visitor.onExpr   =<< traverseExpr visitor' a
     , onType:   \a -> visitor.onType   =<< traverseType visitor' a
     , onDecl:   \a -> visitor.onDecl   =<< traverseDecl visitor' a
     }
@@ -378,8 +380,14 @@ topDownTraversal
 topDownTraversal visitor = visitor'
   where
   visitor' =
-    { onExpr:   \a -> visitor.onExpr a   >>= traverseExpr visitor'
-    , onBinder: \a -> visitor.onBinder a >>= traverseBinder visitor'
+    { onBinder: \a -> visitor.onBinder a >>= traverseBinder visitor'
+    , onExpr:   \a -> visitor.onExpr a   >>= traverseExpr visitor'
     , onType:   \a -> visitor.onType a   >>= traverseType visitor'
     , onDecl:   \a -> visitor.onDecl a   >>= traverseDecl visitor'
     }
+
+rewriteModuleBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
+rewriteModuleBottomUpM = traverseModule <<< bottomUpTraversal
+
+rewriteModuleTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
+rewriteModuleTopDownM = traverseModule <<< topDownTraversal

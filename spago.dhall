@@ -11,6 +11,7 @@
   , "numbers"
   , "psci-support"
   , "strings"
+  , "transformers"
   , "tuples"
   , "typelevel-prelude"
   ]
