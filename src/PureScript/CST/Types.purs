@@ -127,6 +127,8 @@ newtype Separated a = Separated
   , tail :: Array (Tuple SourceToken a)
   }
 
+derive instance newtypeSeparated :: Newtype (Separated a) _
+
 newtype Labeled a b = Labeled
   { label :: a
   , separator :: SourceToken
@@ -170,11 +172,10 @@ newtype Row a = Row
   , tail :: Maybe (Tuple SourceToken (Type a))
   }
 
-derive instance newtypeRow :: Newtype (Row a) _
+derive instance newtypeRow :: Newtype (Row e) _
 
-data Module a = Module
-  { ann :: a
-  , keyword :: SourceToken
+data Module e = Module
+  { keyword :: SourceToken
   , name :: Name ModuleName
   , exports :: Maybe (DelimitedNonEmpty (Export a))
   , where :: SourceToken
@@ -215,7 +216,11 @@ newtype Instance a = Instance
   , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding a)))
   }
 
-derive instance newtypeInstance :: Newtype (Instance a) _
+derive instance newtypeInstance :: Newtype (Instance e) _ 
+
+data InstanceBinding e
+  = InstanceBindingSignature (Labeled (Name Ident) (Type e))
+  | InstanceBindingName (ValueBindingFields e)
 
 data InstanceBinding a
   = InstanceBindingSignature a (Labeled (Name Ident) (Type a))

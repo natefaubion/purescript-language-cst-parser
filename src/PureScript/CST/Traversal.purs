@@ -5,252 +5,379 @@ import Prelude
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
-import PureScript.CST.Types (AdoBlock, Binder, CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
+import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
-{-
-type Traversal a = forall f. Applicative f => (a -> f a) -> a -> f a
-type MonadicTraversal a = forall m. Monad m => (a -> m a) -> a -> m a
-type MonadicTraversalWithContext a = forall c m. Monad m => (c -> a -> m (Tuple c a)) -> c -> a -> m a
-type MonoidalTraversal a = forall m. Monoid m => (a -> m) -> a -> m
-type PureTraversal a = (a -> a) -> a -> a
-type PureTraversalWithContext a = forall c. (c -> a -> Tuple c a) -> c -> a -> a
--}
+type Rewrite e f g = g e -> f (g e)
 
-type BasicTraversal f ann g = g ann -> f (g ann)
+type OnBinder t r = (onBinder :: t Binder | r)
+type OnDecl t r = (onDecl :: t Declaration | r)
+type OnExpr t r = (onExpr :: t Expr | r)
+type OnType t r = (onType :: t Type | r)
 
-type GLanguageTraversal g =
-  { onDeclaration :: g Declaration
-  , onExpr :: g Expr
-  , onBinder :: g Binder
-  , onType :: g Type
-  }
+type OnPureScript t =
+  ( OnBinder t
+  + OnDecl t
+  + OnExpr t
+  + OnType t
+  + ()
+  )
 
-type LanguageTraversal f a = GLanguageTraversal (BasicTraversal f a)
-
-type OnBinder f a r = (onBinder :: BasicTraversal f a Binder | r)
-type OnDeclaration f a r = (onDeclaration :: BasicTraversal f a Declaration | r)
-type OnExpr f a r = (onExpr :: BasicTraversal f a Expr | r)
-type OnType f a r = (onType :: BasicTraversal f a Type | r)
-
-traverseModule :: forall f a. Applicative f => LanguageTraversal f a -> BasicTraversal f a Module
+traverseModule
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Module
 traverseModule k (Module mod) = Module <<<
-  { ann: mod.ann
-  , keyword: mod.keyword
+  { keyword: mod.keyword
   , name: mod.name
   , exports: mod.exports
   , where: mod.where
   , imports: mod.imports
   , trailingComments: mod.trailingComments
   , decls: _
-  } <$> traverse (traverseDeclaration k) mod.decls
+  } <$> traverse (traverseDecl k) mod.decls
 
-traverseDeclaration :: forall f a r. Applicative f => { | OnBinder f a + OnDeclaration f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a Declaration
-traverseDeclaration k = case _ of
-  DeclData a binding ctors -> DeclData a <$> traverseDataHead k binding <*> traverse (traverse (traverseSeparated (traverseDataCtor k))) ctors
-  DeclType a head tok typ -> DeclType a <$> traverseDataHead k head <@> tok <*> k.onType typ
-  DeclNewtype a head tok name typ -> DeclNewtype a <$> traverseDataHead k head <@> tok <@> name <*> k.onType typ
-  DeclClass a head sig -> DeclClass a <$> traverseClassHead k head <*> traverse (traverse (traverse (traverseLabeled k.onType))) sig
-  DeclInstanceChain a instances -> DeclInstanceChain a <$> traverseSeparated (traverseInstance k) instances
-  DeclDerive a tok mbTok head -> DeclDerive a tok mbTok <$> traverseInstanceHead k head
-  DeclKindSignature a tok typ -> DeclKindSignature a tok <$> traverseLabeled k.onType typ
-  DeclSignature a typ -> DeclSignature a <$> traverseLabeled k.onType typ
-  DeclValue a fields -> DeclValue a <$> traverseValueBindingFields k fields
-  DeclForeign a tok1 tok2 f -> DeclForeign a tok1 tok2 <$> traverseForeign k f
-  decl -> k.onDeclaration decl
+traverseDecl
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Declaration
+traverseDecl k = case _ of
+  DeclData binding ctors -> DeclData <$> traverseDataHead k binding <*> traverse (traverse (traverseSeparated (traverseDataCtor k))) ctors
+  DeclType head tok typ -> DeclType <$> traverseDataHead k head <@> tok <*> k.onType typ
+  DeclNewtype head tok name typ -> DeclNewtype <$> traverseDataHead k head <@> tok <@> name <*> k.onType typ
+  DeclClass head sig -> DeclClass <$> traverseClassHead k head <*> traverse (traverse (traverse (traverseLabeled k.onType))) sig
+  DeclInstanceChain instances -> DeclInstanceChain <$> traverseSeparated (traverseInstance k) instances
+  DeclDerive tok mbTok head -> DeclDerive tok mbTok <$> traverseInstanceHead k head
+  DeclKindSignature tok typ -> DeclKindSignature tok <$> traverseLabeled k.onType typ
+  DeclSignature typ -> DeclSignature <$> traverseLabeled k.onType typ
+  DeclValue fields -> DeclValue <$> traverseValueBindingFields k fields
+  DeclForeign tok1 tok2 f -> DeclForeign tok1 tok2 <$> traverseForeign k f
+  decl -> k.onDecl decl
 
-traverseForeign :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a Foreign
+traverseForeign
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f Foreign
 traverseForeign k = case _ of
   ForeignValue typ -> ForeignValue <$> traverseLabeled k.onType typ
   ForeignData tok typ -> ForeignData tok <$> traverseLabeled k.onType typ
   ForeignKind tok name -> pure (ForeignKind tok name)
 
-traverseInstance :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a Instance
+traverseInstance
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Instance
 traverseInstance k = Newtype.traverse Instance (\i -> i { head = _, body = _ } <$> traverseInstanceHead k i.head <*> traverse (traverse (traverse (traverseInstanceBinding k))) i.body)
 
-traverseInstanceHead :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a InstanceHead
+traverseInstanceHead
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f InstanceHead
 traverseInstanceHead k head = head { constraints = _, types = _ } <$> traverse (ltraverse (traverseOneOrDelimited k.onType)) head.constraints <*> traverse k.onType head.types
 
-traverseInstanceBinding :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a InstanceBinding
+traverseInstanceBinding
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f InstanceBinding
 traverseInstanceBinding k = case _ of
-  InstanceBindingSignature a typ -> InstanceBindingSignature a <$> traverseLabeled k.onType typ
-  InstanceBindingName a fields -> InstanceBindingName a <$> traverseValueBindingFields k fields
+  InstanceBindingSignature typ -> InstanceBindingSignature <$> traverseLabeled k.onType typ
+  InstanceBindingName fields -> InstanceBindingName <$> traverseValueBindingFields k fields
 
-traverseClassHead :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a ClassHead
+traverseClassHead
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f ClassHead
 traverseClassHead k head = head { super = _, vars = _ } <$> traverse (ltraverse (traverseOneOrDelimited k.onType)) head.super <*> traverse (traverseTypeVarBinding k) head.vars
 
-traverseOneOrDelimited :: forall f a. Applicative f => (a -> f a) -> BasicTraversal f a OneOrDelimited
+traverseOneOrDelimited
+  :: forall a f
+   . Applicative f
+  => (a -> f a)
+  -> Rewrite a f OneOrDelimited
 traverseOneOrDelimited k = case _ of
   One a -> One <$> k a
   Many all -> Many <$> traverseDelimitedNonEmpty k all
 
-traverseDataHead :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a DataHead
+traverseDataHead
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f DataHead
 traverseDataHead k head = head { vars = _ } <$> traverse (traverseTypeVarBinding k) head.vars
 
-traverseDataCtor :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a DataCtor
+traverseDataCtor
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f DataCtor
 traverseDataCtor k ctor = ctor { fields = _ } <$> traverse k.onType ctor.fields
 
-traverseType :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a Type
+traverseType
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f Type
 traverseType k = case _ of
-  TypeRow a row -> TypeRow a <$> traverseWrapped (traverseRow k) row
-  TypeRecord a row -> TypeRecord a <$> traverseWrapped (traverseRow k) row
-  TypeForall a tok1 bindings tok2 typ -> TypeForall a tok1 <$> traverse (traverseTypeVarBinding k) bindings <@> tok2 <*> k.onType typ
-  TypeKinded a typ1 tok typ2 -> TypeKinded a <$> k.onType typ1 <@> tok <*> k.onType typ2
-  TypeApp a typ1 typ2 -> TypeApp a <$> k.onType typ1 <*> k.onType typ2
-  TypeOp a typ1 op typ2 -> TypeOp a <$> k.onType typ1 <@> op <*> k.onType typ2
-  TypeArr a typ1 tok typ2 -> TypeArr a <$> k.onType typ1 <@> tok <*> k.onType typ2
-  TypeConstrained a typ1 tok typ2 -> TypeConstrained a <$> k.onType typ1 <@> tok <*> k.onType typ2
-  TypeParens a wrapped -> TypeParens a <$> traverseWrapped k.onType wrapped
-  TypeUnaryRow a tok typ -> TypeUnaryRow a tok <$> k.onType typ
+  TypeRow row -> TypeRow <$> traverseWrapped (traverseRow k) row
+  TypeRecord row -> TypeRecord <$> traverseWrapped (traverseRow k) row
+  TypeForall tok1 bindings tok2 typ -> TypeForall tok1 <$> traverse (traverseTypeVarBinding k) bindings <@> tok2 <*> k.onType typ
+  TypeKinded typ1 tok typ2 -> TypeKinded <$> k.onType typ1 <@> tok <*> k.onType typ2
+  TypeApp typ1 typ2 -> TypeApp <$> k.onType typ1 <*> k.onType typ2
+  TypeOp typ1 op typ2 -> TypeOp <$> k.onType typ1 <@> op <*> k.onType typ2
+  TypeArr typ1 tok typ2 -> TypeArr <$> k.onType typ1 <@> tok <*> k.onType typ2
+  TypeConstrained typ1 tok typ2 -> TypeConstrained <$> k.onType typ1 <@> tok <*> k.onType typ2
+  TypeParens wrapped -> TypeParens <$> traverseWrapped k.onType wrapped
+  TypeUnaryRow tok typ -> TypeUnaryRow tok <$> k.onType typ
   typ -> k.onType typ
 
-traverseRow :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a Row
+traverseRow
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f Row
 traverseRow k = Newtype.traverse Row (\r -> r { labels = _, tail = _ } <$> traverse (traverseSeparated (traverseLabeled k.onType)) r.labels <*> traverse (traverse k.onType) r.tail)
 
-traverseTypeVarBinding :: forall f a r. Applicative f => { | OnType f a + r } -> BasicTraversal f a TypeVarBinding
+traverseTypeVarBinding
+  :: forall e f r
+   . Applicative f
+  => { | OnType (Rewrite e f) + r }
+  -> Rewrite e f TypeVarBinding
 traverseTypeVarBinding k = case _ of
   TypeVarKinded labeled -> TypeVarKinded <$> traverseWrapped (traverseLabeled k.onType) labeled
   TypeVarName name -> pure (TypeVarName name)
 
-traverseExpr :: forall r f a. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a Expr
+traverseExpr
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Expr
 traverseExpr k = case _ of
-  ExprArray a expr -> ExprArray a <$> (traverseDelimited k.onExpr expr)
-  ExprRecord a expr -> ExprRecord a <$> traverseDelimited (traverseRecordLabeled k.onExpr) expr
-  ExprParens a expr -> ExprParens a <$> traverseWrapped k.onExpr expr
-  ExprTyped a expr tok ty -> ExprTyped a <$> k.onExpr expr <@> tok <*> k.onType ty
-  ExprInfix a expr1 expr2 expr3 -> ExprInfix a <$> k.onExpr expr1 <*> traverseWrapped k.onExpr expr2 <*> k.onExpr expr3
-  ExprOp a expr1 op expr2 -> ExprOp a <$> k.onExpr expr1 <@> op <*> k.onExpr expr2
-  ExprNegate a tok expr -> ExprNegate a tok <$> k.onExpr expr
-  ExprRecordAccessor a recordAccessor -> ExprRecordAccessor a <$> traverseRecordAccessor k recordAccessor
-  ExprRecordUpdate a expr recordUpdates -> ExprRecordUpdate a <$> k.onExpr expr <*> traverseWrapped (traverseSeparated (traverseRecordUpdate k)) recordUpdates
-  ExprApp a expr1 expr2 -> ExprApp a <$> k.onExpr expr1 <*> k.onExpr expr2
-  ExprLambda a lambda -> ExprLambda a <$> traverseLambda k lambda
-  ExprIf a ifThenElse -> ExprIf a <$> traverseIfThenElse k ifThenElse
-  ExprCase a caseOf -> ExprCase a <$> traverseCaseOf k caseOf
-  ExprLet a letIn -> ExprLet a <$> traverseLetIn k letIn
-  ExprDo a doBlock -> ExprDo a <$> traverseDoBlock k doBlock
-  ExprAdo a adoBlock -> ExprAdo a <$> traverseAdoBlock k adoBlock
+  ExprArray expr -> ExprArray <$> (traverseDelimited k.onExpr expr)
+  ExprRecord expr -> ExprRecord <$> traverseDelimited (traverseRecordLabeled k.onExpr) expr
+  ExprParens expr -> ExprParens <$> traverseWrapped k.onExpr expr
+  ExprTyped expr tok ty -> ExprTyped <$> k.onExpr expr <@> tok <*> k.onType ty
+  ExprInfix expr1 expr2 expr3 -> ExprInfix <$> k.onExpr expr1 <*> traverseWrapped k.onExpr expr2 <*> k.onExpr expr3
+  ExprOp expr1 op expr2 -> ExprOp <$> k.onExpr expr1 <@> op <*> k.onExpr expr2
+  ExprNegate tok expr -> ExprNegate tok <$> k.onExpr expr
+  ExprRecordAccessor recordAccessor -> ExprRecordAccessor <$> traverseRecordAccessor k recordAccessor
+  ExprRecordUpdate expr recordUpdates -> ExprRecordUpdate <$> k.onExpr expr <*> traverseWrapped (traverseSeparated (traverseRecordUpdate k)) recordUpdates
+  ExprApp expr1 expr2 -> ExprApp <$> k.onExpr expr1 <*> k.onExpr expr2
+  ExprLambda lambda -> ExprLambda <$> traverseLambda k lambda
+  ExprIf ifThenElse -> ExprIf <$> traverseIfThenElse k ifThenElse
+  ExprCase caseOf -> ExprCase <$> traverseCaseOf k caseOf
+  ExprLet letIn -> ExprLet <$> traverseLetIn k letIn
+  ExprDo doBlock -> ExprDo <$> traverseDoBlock k doBlock
+  ExprAdo adoBlock -> ExprAdo <$> traverseAdoBlock k adoBlock
   expr -> k.onExpr expr
 
-traverseDelimited :: forall f a. Applicative f => (a -> f a) -> BasicTraversal f a Delimited
+traverseDelimited
+  :: forall f a
+   . Applicative f
+  => (a -> f a)
+  -> Rewrite a f Delimited
 traverseDelimited k = traverseWrapped (traverse (traverseSeparated k))
 
-traverseDelimitedNonEmpty :: forall a f. Applicative f => (a -> f a) -> BasicTraversal f a DelimitedNonEmpty
+traverseDelimitedNonEmpty
+  :: forall a f
+   . Applicative f
+  => (a -> f a)
+  -> Rewrite a f DelimitedNonEmpty
 traverseDelimitedNonEmpty k = traverseWrapped (traverseSeparated k)
 
-traverseSeparated :: forall f a. Applicative f => (a -> f a) -> BasicTraversal f a Separated
+traverseSeparated
+  :: forall f a
+   . Applicative f
+  => (a -> f a)
+  -> Rewrite a f Separated
 traverseSeparated k (Separated sep) = ado
   head <- k sep.head
   tail <- traverse (traverse k) sep.tail
   in Separated { head, tail }
 
-traverseWrapped :: forall f a. Applicative f => (a -> f a) -> BasicTraversal f a Wrapped
+traverseWrapped
+ :: forall f a
+  . Applicative f
+ => (a -> f a)
+ -> Rewrite a f Wrapped
 traverseWrapped k = Newtype.traverse Wrapped (\w -> w { value = _ } <$> k w.value)
 
-traverseRecordLabeled :: forall f a. Applicative f => (a -> f a) -> BasicTraversal f a RecordLabeled
+traverseRecordLabeled
+  :: forall f a
+   . Applicative f
+  => (a -> f a)
+  -> Rewrite a f RecordLabeled
 traverseRecordLabeled k = case _ of
   RecordPun name -> pure (RecordPun name)
   RecordField name tok a -> RecordField name tok <$> k a
 
-traverseLabeled :: forall f a b. Applicative f => (b -> f b) -> BasicTraversal f b (Labeled a)
+traverseLabeled
+  :: forall f a b
+   . Applicative f
+  => (b -> f b)
+  -> Rewrite b f (Labeled a)
 traverseLabeled k = Newtype.traverse Labeled (\l -> l { value = _ } <$> k l.value)
 
-traverseRecordAccessor :: forall f a r. Applicative f => { | OnExpr f a + r } -> BasicTraversal f a RecordAccessor
+traverseRecordAccessor
+  :: forall e f r
+   . Applicative f
+  => { | OnExpr (Rewrite e f) + r }
+  -> Rewrite e f RecordAccessor
 traverseRecordAccessor k r = r { expr = _ } <$> k.onExpr r.expr
 
-traverseRecordUpdate :: forall f a r. Applicative f => { | OnExpr f a + r } -> BasicTraversal f a RecordUpdate
+traverseRecordUpdate
+  :: forall e f r
+   . Applicative f
+  => { | OnExpr (Rewrite e f) + r }
+  -> Rewrite e f RecordUpdate
 traverseRecordUpdate k = case _ of
   RecordUpdateLeaf name tok expr -> RecordUpdateLeaf name tok <$> k.onExpr expr
   RecordUpdateBranch name recordUpdates -> RecordUpdateBranch name <$> traverseWrapped (traverseSeparated (traverseRecordUpdate k)) recordUpdates
 
-traverseLambda :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + r } -> BasicTraversal f a Lambda
-traverseLambda k l = l { binders = _, body = _ } <$> traverse k.onBinder l.binders <*> k.onExpr l.body
+traverseLambda
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Lambda
+traverseLambda k l = l { binders = _, body = _ } <$> traverse (traverseBinder k) l.binders <*> k.onExpr l.body
 
-traverseIfThenElse :: forall f a r. Applicative f => { | OnExpr f a + r} -> BasicTraversal f a IfThenElse
+traverseIfThenElse
+  :: forall e f r
+   . Applicative f
+  => { | OnExpr (Rewrite e f) + r }
+  -> Rewrite e f IfThenElse
 traverseIfThenElse k r = r { cond = _, true = _, false = _ } <$> k.onExpr r.cond <*> k.onExpr r.true <*> k.onExpr r.false
 
-traverseCaseOf :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a CaseOf
-traverseCaseOf k r = r { head = _, branches = _ } <$> traverseSeparated k.onExpr r.head <*> traverse (bitraverse (traverseSeparated k.onBinder) (traverseGuarded k)) r.branches
+traverseCaseOf
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f CaseOf
+traverseCaseOf k r = r { head = _, branches = _ } <$> traverseSeparated k.onExpr r.head <*> traverse (bitraverse (traverseSeparated (traverseBinder k)) (traverseGuarded k)) r.branches
 
-traverseGuarded :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a Guarded
+traverseGuarded
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Guarded
 traverseGuarded k = case _ of
   Unconditional tok w -> Unconditional tok <$> traverseWhere k w
   Guarded guards -> Guarded <$> traverse (traverseGuardedExpr k) guards
 
-traverseGuardedExpr :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a GuardedExpr
+traverseGuardedExpr
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f GuardedExpr
 traverseGuardedExpr k g = g { patterns = _, where = _ } <$> traverseSeparated (traversePatternGuard k) g.patterns <*> traverseWhere k g.where
 
-traversePatternGuard :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + r } -> BasicTraversal f a PatternGuard
-traversePatternGuard k g = g { binder = _, expr = _ } <$> traverse (ltraverse k.onBinder) g.binder <*> k.onExpr g.expr
+traversePatternGuard
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f PatternGuard
+traversePatternGuard k g = g { binder = _, expr = _ } <$> traverse (ltraverse (traverseBinder k)) g.binder <*> k.onExpr g.expr
 
-traverseWhere :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a Where
+traverseWhere
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Where
 traverseWhere k w = w { expr = _, bindings = _ } <$> k.onExpr w.expr <*> traverse (traverse (traverse (traverseLetBinding k))) w.bindings
 
-traverseLetBinding :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a LetBinding
+traverseLetBinding
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f LetBinding
 traverseLetBinding k = case _ of
-  LetBindingSignature a name -> LetBindingSignature a <$> traverseLabeled k.onType name
-  LetBindingName a valueBinders -> LetBindingName a <$> traverseValueBindingFields k valueBinders
-  LetBindingPattern a binder tok w -> LetBindingPattern a <$> k.onBinder binder <@> tok <*> traverseWhere k w
+  LetBindingSignature name -> LetBindingSignature <$> traverseLabeled k.onType name
+  LetBindingName valueBinders -> LetBindingName <$> traverseValueBindingFields k valueBinders
+  LetBindingPattern binder tok w -> LetBindingPattern <$> traverseBinder k binder <@> tok <*> traverseWhere k w
 
-traverseValueBindingFields :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a ValueBindingFields
-traverseValueBindingFields k v = v { binders = _, guarded = _ } <$> traverse k.onBinder v.binders <*> traverseGuarded k v.guarded
+traverseValueBindingFields
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f ValueBindingFields
+traverseValueBindingFields k v = v { binders = _, guarded = _ } <$> traverse (traverseBinder k) v.binders <*> traverseGuarded k v.guarded
 
-traverseLetIn :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a LetIn
+traverseLetIn
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f LetIn
 traverseLetIn k l = l { bindings = _, body = _ } <$> traverse (traverseLetBinding k) l.bindings <*> k.onExpr l.body
 
-traverseDoStatement :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a DoStatement
+traverseDoStatement
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f DoStatement
 traverseDoStatement k = case _ of
   DoLet tok letBindings -> DoLet tok <$> traverse (traverseLetBinding k) letBindings
   DoDiscard expr -> DoDiscard <$> k.onExpr expr
-  DoBind binder tok expr -> DoBind <$> k.onBinder binder <@> tok <*> k.onExpr expr
+  DoBind binder tok expr -> DoBind <$> traverseBinder k binder <@> tok <*> k.onExpr expr
 
-traverseDoBlock :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a DoBlock
+traverseDoBlock
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f DoBlock
 traverseDoBlock k d = d { statements = _ } <$> traverse (traverseDoStatement k) d.statements
 
-traverseAdoBlock :: forall f a r. Applicative f => { | OnBinder f a + OnExpr f a + OnType f a + r } -> BasicTraversal f a AdoBlock
+traverseAdoBlock
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f AdoBlock
 traverseAdoBlock k a = a { statements = _, result = _ } <$> traverse (traverseDoStatement k) a.statements <*> k.onExpr a.result
 
-{-
-bottomUpTraversal :: Traversal ~> MonadicTraversal
-bottomUpTraversal traversal k = go
-  where go a = k =<< traversal go a
+traverseBinder
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f Binder
+traverseBinder k = case _ of
+  BinderNamed name tok binder -> BinderNamed name tok <$> traverseBinder k binder
+  BinderConstructor name binders -> BinderConstructor name <$> traverse (traverseBinder k) binders
+  BinderArray binders -> BinderArray <$> traverseDelimited (traverseBinder k) binders
+  BinderRecord binders -> BinderRecord <$> traverseDelimited (traverseRecordLabeled (traverseBinder k)) binders
+  BinderParens binder -> BinderParens <$> traverseWrapped (traverseBinder k) binder
+  BinderTyped binder tok typ -> BinderTyped <$> traverseBinder k binder <@> tok <*> k.onType typ
+  BinderOp binder1 op binder2 -> BinderOp <$> traverseBinder k binder1 <@> op <*> traverseBinder k binder2
+  binder -> k.onBinder binder
 
-topDownTraversal :: Traversal ~> MonadicTraversal
-topDownTraversal traversal k = go
-  where go a = k a >>= traversal go
+bottomUpTraversal
+  :: forall m e
+   . Monad m
+  => { | OnPureScript (Rewrite e m) }
+  -> { | OnPureScript (Rewrite e m) }
+bottomUpTraversal visitor = visitor'
+  where
+  visitor' =
+    { onExpr:   \a -> visitor.onExpr   =<< traverseExpr visitor' a
+    , onBinder: \a -> visitor.onBinder =<< traverseBinder visitor' a
+    , onType:   \a -> visitor.onType   =<< traverseType visitor' a
+    , onDecl:   \a -> visitor.onDecl   =<< traverseDecl visitor' a
+    }
 
-topDownTraversalWithContext :: Traversal ~> MonadicTraversalWithContext
-topDownTraversalWithContext traversal k = flip (runReaderT <<< go)
-  where go a = ReaderT \ctx -> k ctx a >>= uncurry (flip (runReaderT <<< traversal go))
-
-monoidalTraversal :: Traversal ~> MonoidalTraversal
-monoidalTraversal traversal k = un Const <<< runFree (un Identity) <<< un Compose <<< go
-  where go a = Compose (pure (Const (k a))) <*> traversal go a
-
-purely :: MonadicTraversal ~> PureTraversal
-purely traversal k = runFree (un Identity) <<< traversal (pure <<< k)
-
-purelyWithContext :: MonadicTraversalWithContext ~> PureTraversalWithContext
-purelyWithContext traversal k c = runFree (un Identity) <<< traversal (\c' a' -> pure (k c' a')) c
-
-rewriteExprBottomUpM :: forall a. MonadicTraversal (Expr a)
-rewriteExprBottomUpM = bottomUpTraversal traverseExpr1
-
-rewriteExprTopDownM :: forall a. MonadicTraversal (Expr a)
-rewriteExprTopDownM = topDownTraversal traverseExpr1
-
-rewriteExprWithContextM :: forall a. MonadicTraversalWithContext (Expr a)
-rewriteExprWithContextM = topDownTraversalWithContext traverseExpr1
-
-rewriteExprBottomUp :: forall a. PureTraversal (Expr a)
-rewriteExprBottomUp = purely rewriteExprBottomUpM
-
-rewriteExprTopDown :: forall a. PureTraversal (Expr a)
-rewriteExprTopDown = purely rewriteExprTopDownM
-
-rewriteExprWithContext :: forall a. PureTraversalWithContext (Expr a)
-rewriteExprWithContext = purelyWithContext rewriteExprWithContextM
-
-foldMapExpr :: forall a. MonoidalTraversal (Expr a)
-foldMapExpr = monoidalTraversal traverseExpr1
--}
+topDownTraversal
+  :: forall m e
+   . Monad m
+  => { | OnPureScript (Rewrite e m) }
+  -> { | OnPureScript (Rewrite e m) }
+topDownTraversal visitor = visitor'
+  where
+  visitor' =
+    { onExpr:   \a -> visitor.onExpr a   >>= traverseExpr visitor'
+    , onBinder: \a -> visitor.onBinder a >>= traverseBinder visitor'
+    , onType:   \a -> visitor.onType a   >>= traverseType visitor'
+    , onDecl:   \a -> visitor.onDecl a   >>= traverseDecl visitor'
+    }
