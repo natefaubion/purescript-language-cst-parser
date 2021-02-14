@@ -2,7 +2,8 @@ module PureScript.CST.Parser
   ( RecoveredError
   , Recovered
   , parseModule
-  , parseImportDecl
+  , parseModuleHeader
+  , parseModuleBody
   , parseType
   , parseExpr
   , parseBinder
@@ -25,7 +26,7 @@ import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.Parser.Monad (Parser, PositionedError, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module, ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourcePos, SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourcePos, SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
 
 type RecoveredError =
   { error :: ParseError
@@ -111,10 +112,10 @@ layout valueParser =
   go head = Array.cons head <$> tail
 
 parseModule :: Parser (Recovered Module)
-parseModule =
-  { header: _, body: _ }
-    <$> parseModuleHeader
-    <*> parseModuleBody
+parseModule = do
+  header <- parseModuleHeader
+  body <- parseModuleBody
+  pure $ Module { header, body }
 
 parseModuleHeader :: Parser (Recovered ModuleHeader)
 parseModuleHeader = do

@@ -1,8 +1,11 @@
 module PureScript.CST.Parser.Monad
   ( Parser
+  , ParserState
   , ParserResult(..)
   , PositionedError
   , Recovery(..)
+  , initialParserState
+  , fromParserResult
   , runParser
   , runParser'
   , take
@@ -152,16 +155,18 @@ recover :: forall a. (PositionedError -> TokenStream -> Recovery a) -> Parser a 
 recover = Recover
 
 runParser :: forall a. TokenStream -> Parser a -> Either PositionedError (Tuple a (Array PositionedError))
-runParser stream parser =
-  case runParser' stream parser of
-    ParseFail error position _ _ _ ->
-      Left { position, error }
-    ParseSucc res _ _ _ errors ->
-      Right (Tuple res errors)
+runParser stream = fromParserResult <<< runParser' (initialParserState stream)
+
+fromParserResult :: forall a. ParserResult a -> Either PositionedError (Tuple a (Array PositionedError))
+fromParserResult = case _ of
+  ParseFail error position _ _ ->
+    Left { position, error }
+  ParseSucc res { errors } ->
+    Right (Tuple res errors)
 
 data ParserResult a
-  = ParseFail ParseError SourcePos Boolean (Maybe TokenStream) (Array PositionedError)
-  | ParseSucc a SourcePos Boolean TokenStream (Array PositionedError)
+  = ParseFail ParseError SourcePos ParserState (Maybe TokenStream)
+  | ParseSucc a ParserState
 
 data ParserStack a
   = StkNil
@@ -181,6 +186,14 @@ type ParserState =
   , stream :: TokenStream
   }
 
+initialParserState :: TokenStream -> ParserState
+initialParserState stream =
+  { consumed: false
+  , errors: []
+  , position: { line: 0, column: 0 }
+  , stream
+  }
+
 data FailUnwind a
   = FailStop (ParserResult a)
   | FailAlt (ParserStack a) ParserState (Parser a)
@@ -190,16 +203,10 @@ data SuccUnwind a
   = SuccStop (ParserResult a)
   | SuccBinds (ParserStack a) ParserState (ParserBinds a)
 
-runParser' :: forall a. TokenStream -> Parser a -> ParserResult a
-runParser' = \stream parser ->
+runParser' :: forall a. ParserState -> Parser a -> ParserResult a
+runParser' = \state parser ->
   (unsafeCoerce :: ParserResult UnsafeBoundValue -> ParserResult a) $
-    go StkNil
-      { consumed: false
-      , errors: []
-      , position: { line: 0, column: 0 }
-      , stream
-      }
-      (unsafeCoerce parser)
+    go StkNil state (unsafeCoerce parser)
   where
   go :: ParserStack UnsafeBoundValue -> ParserState -> Parser UnsafeBoundValue -> ParserResult UnsafeBoundValue
   go stack state@{ errors } = case _ of
@@ -232,7 +239,7 @@ runParser' = \stream parser ->
     Take k ->
       case TokenStream.step state.stream of
         TokenError errPos err errStream ->
-          ParseFail err errPos state.consumed errStream errors
+          ParseFail err errPos state errStream
         TokenEOF errPos _ ->
           go stack state (Fail errPos UnexpectedEof)
         TokenCons tok nextPos nextStream ->
@@ -244,7 +251,7 @@ runParser' = \stream parser ->
     Eof k ->
       case TokenStream.step state.stream of
         TokenError errPos err errStream ->
-          ParseFail err errPos state.consumed errStream errors
+          ParseFail err errPos state errStream
         TokenEOF eofPos comments ->
           go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
         TokenCons tok _ _ ->
@@ -257,7 +264,7 @@ runParser' = \stream parser ->
   unwindFail :: ParseError -> SourcePos -> ParserState -> ParserStack UnsafeBoundValue -> FailUnwind UnsafeBoundValue
   unwindFail error position state@{ errors } = case _ of
     StkNil ->
-      FailStop (ParseFail error position state.consumed (Just state.stream) errors)
+      FailStop (ParseFail error position state (Just state.stream))
     StkAlt prevStack prevState prev ->
       if state.consumed then
         unwindFail error position state prevStack
@@ -283,7 +290,7 @@ runParser' = \stream parser ->
   unwindSucc :: UnsafeBoundValue -> ParserState -> ParserStack UnsafeBoundValue -> SuccUnwind UnsafeBoundValue
   unwindSucc a state = case _ of
     StkNil ->
-      SuccStop (ParseSucc a state.position state.consumed state.stream state.errors)
+      SuccStop (ParseSucc a state)
     StkAlt prevStack _ _ ->
       unwindSucc a state prevStack
     StkTry prevStack _ ->

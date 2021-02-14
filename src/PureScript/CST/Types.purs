@@ -167,7 +167,7 @@ newtype Row e = Row
   , tail :: Maybe (Tuple SourceToken (Type e))
   }
 
-type Module e =
+newtype Module e = Module
   { header :: ModuleHeader e
   , body :: ModuleBody e
   }
