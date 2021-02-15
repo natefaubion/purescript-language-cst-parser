@@ -12,7 +12,7 @@ module PureScript.CST.Parser
 import Prelude
 
 import Control.Alt (alt)
-import Control.Lazy (defer, fix)
+import Control.Lazy (defer)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
@@ -130,16 +130,13 @@ parseModuleBody = do
   pure $ ModuleBody { decls, trailingComments }
 
 parseModuleImportDecls :: Parser (Array (Recovered ImportDecl))
-parseModuleImportDecls = fix \go ->
-  Array.cons
-    <$> parseImportDecl
-    <*> (tokLayoutSep *> go <|> lookAhead (tokLayoutEnd) *> pure [])
-    <|> pure []
+parseModuleImportDecls =
+  many (parseImportDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
 
 parseModuleDecls :: Parser (Array (Recovered Declaration))
 parseModuleDecls =
   lookAhead tokLayoutEnd *> pure []
-    <|> fix \go -> Array.cons <$> recoverDecl parseDecl <*> (tokLayoutSep *> go <|> pure [])
+    <|> many (recoverDecl parseDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
 
 parseExport :: Parser (Recovered Export)
 parseExport =
