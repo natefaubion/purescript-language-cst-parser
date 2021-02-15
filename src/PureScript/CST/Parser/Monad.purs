@@ -261,11 +261,11 @@ runParser' = \state parser ->
           res
     Take k ->
       case TokenStream.step state.stream of
-        TokenError errPos err errStream ->
+        TokenError errPos err errStream _ ->
           ParseFail err errPos state errStream
         TokenEOF errPos _ ->
           go stack state (Fail errPos UnexpectedEof)
-        TokenCons tok nextPos nextStream ->
+        TokenCons tok nextPos nextStream _ ->
           case k tok of
             Left err ->
               go stack state (Fail tok.range.start err)
@@ -273,11 +273,11 @@ runParser' = \state parser ->
               go stack { consumed: true, errors, position: nextPos, stream: nextStream } (Pure a)
     Eof k ->
       case TokenStream.step state.stream of
-        TokenError errPos err errStream ->
+        TokenError errPos err errStream _ ->
           ParseFail err errPos state errStream
         TokenEOF eofPos comments ->
           go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
-        TokenCons tok _ _ ->
+        TokenCons tok _ _ _ ->
           go stack state (Fail tok.range.start (ExpectedEof tok.value))
     Iter f -> do
       let

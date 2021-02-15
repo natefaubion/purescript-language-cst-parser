@@ -18,11 +18,12 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import PureScript.CST.Errors (ParseError(..))
+import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, PositionedError, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
 import PureScript.CST.TokenStream as TokenStream
@@ -130,13 +131,10 @@ parseModuleBody = do
   pure $ ModuleBody { decls, trailingComments }
 
 parseModuleImportDecls :: Parser (Array (Recovered ImportDecl))
-parseModuleImportDecls =
-  many (parseImportDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
+parseModuleImportDecls = many (parseImportDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
 
 parseModuleDecls :: Parser (Array (Recovered Declaration))
-parseModuleDecls =
-  lookAhead tokLayoutEnd *> pure []
-    <|> many (recoverDecl parseDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
+parseModuleDecls = many (recoverDecl parseDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
 
 parseExport :: Parser (Recovered Export)
 parseExport =
@@ -1129,31 +1127,32 @@ reservedKeywords = Set.fromFoldable
   , "where"
   ]
 
-recoverTopLevelLayout :: forall a. (PositionedError -> Array SourceToken -> a) -> Parser a -> Parser a
-recoverTopLevelLayout mkNode = recover \err ->
-  map (mkNode err) <<< recoverTokensWhile \tok ->
+recoverIndent :: forall a. (PositionedError -> Array SourceToken -> a) -> Parser a -> Parser a
+recoverIndent mkNode = recover \err ->
+  map (mkNode err) <<< recoverTokensWhile \tok indent ->
     case tok.value of
       TokLayoutEnd
-        | tok.range.start.column == 0 -> false
+        | tok.range.start.column == indent.column -> false
       TokLayoutSep
-        | tok.range.start.column == 0 -> false
+        | tok.range.start.column == indent.column -> false
       _ -> true
 
-recoverTokensWhile :: (SourceToken -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
+recoverTokensWhile :: (SourceToken -> SourcePos -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
 recoverTokensWhile p = go []
   where
   go :: Array SourceToken -> TokenStream -> Recovery (Array SourceToken)
   go acc stream = case TokenStream.step stream of
-    TokenError errPos err errStream ->
+    TokenError errPos err errStream _ ->
       Recovery acc errPos stream
     TokenEOF eofPos _ ->
       Recovery acc eofPos stream
-    TokenCons tok nextPos nextStream
-      | p tok ->
-          go (Array.snoc acc tok) nextStream
-      | otherwise ->
-          Recovery acc tok.range.start stream
+    TokenCons tok nextPos nextStream stk -> do
+      let indent = fromMaybe { line: 0, column: 0 } $ currentIndent stk
+      if p tok indent then
+        go (Array.snoc acc tok) nextStream
+      else
+        Recovery acc tok.range.start stream
 
 recoverDecl :: RecoveryStrategy Declaration
-recoverDecl = recoverTopLevelLayout \{ error, position } tokens ->
+recoverDecl = recoverIndent \{ error, position } tokens ->
   DeclError { error, position, tokens }
