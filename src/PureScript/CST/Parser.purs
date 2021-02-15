@@ -18,14 +18,14 @@ import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
 import Data.Foldable (foldl)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, PositionedError, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourcePos, SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
 
@@ -1016,17 +1016,17 @@ tokKeySymbol sym = expect case _ of
 
 tokLayoutStart :: Parser SourceToken
 tokLayoutStart = expect case _ of
-  TokLayoutStart -> true
+  TokLayoutStart _ -> true
   _ -> false
 
 tokLayoutEnd :: Parser SourceToken
 tokLayoutEnd = expect case _ of
-  TokLayoutEnd -> true
+  TokLayoutEnd _ -> true
   _ -> false
 
 tokLayoutSep :: Parser SourceToken
 tokLayoutSep = expect case _ of
-  TokLayoutSep -> true
+  TokLayoutSep _ -> true
   _ -> false
 
 tokLeftParen :: Parser SourceToken
@@ -1131,23 +1131,23 @@ recoverIndent :: forall a. (PositionedError -> Array SourceToken -> a) -> Parser
 recoverIndent mkNode = recover \err ->
   map (mkNode err) <<< recoverTokensWhile \tok indent ->
     case tok.value of
-      TokLayoutEnd
-        | tok.range.start.column == indent.column -> false
-      TokLayoutSep
-        | tok.range.start.column == indent.column -> false
+      TokLayoutEnd col -> col > indent
+      TokLayoutSep col -> col > indent
       _ -> true
 
-recoverTokensWhile :: (SourceToken -> SourcePos -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
-recoverTokensWhile p = go []
+recoverTokensWhile :: (SourceToken -> Int -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
+recoverTokensWhile p initStream = go [] initStream
   where
+  indent :: Int
+  indent = maybe 0 _.column $ currentIndent $ layoutStack initStream
+
   go :: Array SourceToken -> TokenStream -> Recovery (Array SourceToken)
   go acc stream = case TokenStream.step stream of
     TokenError errPos err errStream _ ->
       Recovery acc errPos stream
     TokenEOF eofPos _ ->
       Recovery acc eofPos stream
-    TokenCons tok nextPos nextStream stk -> do
-      let indent = fromMaybe { line: 0, column: 0 } $ currentIndent stk
+    TokenCons tok nextPos nextStream _ ->
       if p tok indent then
         go (Array.snoc acc tok) nextStream
       else

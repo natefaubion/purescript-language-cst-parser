@@ -283,13 +283,16 @@ runParser' = \state parser ->
       let
         Tuple state' a = f # unFold \(Fold init step done p) -> do
           let
-            iter acc state' = case runParser' state' p of
+            iter acc state' = case runParser' (state' { consumed = false }) p of
               ParseSucc a state'' ->
                 iter (step acc a) state''
-              ParseFail _ _ state'' _ ->
-                Tuple state' (done acc)
+              res@(ParseFail err errPos state'' _)
+                | state''.consumed ->
+                    Tuple state'' (Fail errPos err)
+                | otherwise ->
+                    Tuple state' (Pure (done acc))
           iter (init unit) state
-      go stack state' (Pure a)
+      go stack state' a
     Defer z ->
       go stack state (Z.force z)
     Recover k p ->
@@ -303,7 +306,7 @@ runParser' = \state parser ->
       if state.consumed then
         unwindFail error position state prevStack
       else
-        FailAlt prevStack (prevState { errors = errors }) prev
+        FailAlt prevStack prevState prev
     StkTry prevStack prevState ->
       unwindFail error position (state { consumed = prevState.consumed }) prevStack
     StkRecover prevStack prevState k ->

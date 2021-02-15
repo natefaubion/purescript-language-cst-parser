@@ -37,16 +37,22 @@ consTokens = flip (foldr go)
     Tuple tok.range.start $ TokenStream $ Lazy.defer \_ ->
       TokenCons tok pos next stk
 
+layoutStack :: TokenStream -> LayoutStack
+layoutStack stream = case step stream of
+  TokenEOF _ _ -> Nil
+  TokenError _ _ _ stk -> stk
+  TokenCons _ _ _ stk -> stk
+
 unwindLayout :: SourcePos -> TokenStream -> LayoutStack -> TokenStream
 unwindLayout pos eof = go
   where
   go stk = TokenStream $ Lazy.defer \_ -> case stk of
     Nil -> step eof
-    Tuple _ lyt : tl ->
+    Tuple pos' lyt : tl ->
       case lyt of
         LytRoot ->
           step eof
         _ | isIndented lyt ->
-              TokenCons (lytToken pos TokLayoutEnd) pos (go tl) tl
+              TokenCons (lytToken pos (TokLayoutEnd pos'.column)) pos (go tl) tl
           | otherwise ->
               step (go tl)

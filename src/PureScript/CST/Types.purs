@@ -70,9 +70,9 @@ data Token
   | TokRawString String
   | TokInt String Int
   | TokNumber String Number
-  | TokLayoutStart
-  | TokLayoutSep
-  | TokLayoutEnd
+  | TokLayoutStart Int
+  | TokLayoutSep Int
+  | TokLayoutEnd Int
 
 derive instance eqToken :: Eq Token
 

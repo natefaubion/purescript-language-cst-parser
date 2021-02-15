@@ -98,15 +98,15 @@ printTokenWithOption option = case _ of
     raw
   TokNumber raw _ ->
     raw
-  TokLayoutStart ->
+  TokLayoutStart _ ->
     case option of
       ShowLayout -> "{"
       HideLayout -> ""
-  TokLayoutSep ->
+  TokLayoutSep _ ->
     case option of
       ShowLayout -> ";"
       HideLayout -> ""
-  TokLayoutEnd ->
+  TokLayoutEnd _ ->
     case option of
       ShowLayout -> "}"
       HideLayout -> ""

@@ -301,11 +301,11 @@ bumpToken pos@{ line, column } = case _ of
     bumpText pos 1 raw
   TokRawString raw ->
     bumpText pos 3 raw
-  TokLayoutStart ->
+  TokLayoutStart _ ->
     pos
-  TokLayoutSep ->
+  TokLayoutSep _ ->
     pos
-  TokLayoutEnd ->
+  TokLayoutEnd _ ->
     pos
 
 bumpText :: SourcePos -> Int -> String -> SourcePos

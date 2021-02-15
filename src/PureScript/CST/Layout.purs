@@ -125,10 +125,10 @@ insertLayout src@{ range, value: tok } nextPos stack =
         --      foo <- ...
         --      let bar = ...
         --      in ...
-        Tuple ((Tuple _ LytLetStmt) : (Tuple _ LytAdo) : stk') acc' ->
-          Tuple stk' acc' # insertEnd # insertEnd # insertToken src
-        Tuple (Tuple _ lyt : stk') acc' | isIndented lyt ->
-          Tuple stk' acc' # insertEnd # insertToken src
+        Tuple ((Tuple pos1 LytLetStmt) : (Tuple pos2 LytAdo) : stk') acc' ->
+          Tuple stk' acc' # insertEnd pos1.column # insertEnd pos2.column # insertToken src
+        Tuple (Tuple pos1 lyt : stk') acc' | isIndented lyt ->
+          Tuple stk' acc' # insertEnd pos1.column # insertToken src
         _ ->
           state # insertDefault # popStack (_ == LytProperty)
       where
@@ -320,7 +320,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     --     foo = 42
     case find (isIndented <<< snd) stk of
       Just (Tuple pos _) | nextPos.column <= pos.column -> state
-      _ -> state # pushStack nextPos lyt # insertToken (lytToken nextPos TokLayoutStart)
+      _ -> state # pushStack nextPos lyt # insertToken (lytToken nextPos (TokLayoutStart nextPos.column))
 
   insertSep state@(Tuple stk acc) = case stk of
     -- LytTopDecl is closed by a separator.
@@ -338,7 +338,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     _ ->
       state
     where
-    sepTok = lytToken tokPos TokLayoutSep
+    sepTok = lytToken tokPos (TokLayoutSep tokPos.column)
 
   insertKwProperty k state =
     case state # insertDefault of
@@ -347,8 +347,8 @@ insertLayout src@{ range, value: tok } nextPos stack =
       state' ->
         k state'
 
-  insertEnd =
-    insertToken (lytToken tokPos TokLayoutEnd)
+  insertEnd indent =
+    insertToken (lytToken tokPos (TokLayoutEnd indent))
 
   insertToken token (Tuple stk acc) =
     Tuple stk (acc `Array.snoc` (Tuple token stk))
@@ -366,7 +366,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
       | p lytPos lyt =
           go stk'
             if isIndented lyt
-            then acc `Array.snoc` (Tuple (lytToken tokPos TokLayoutEnd) stk')
+            then acc `Array.snoc` (Tuple (lytToken tokPos (TokLayoutEnd lytPos.column)) stk')
             else acc
     go stk acc =
       Tuple stk acc
