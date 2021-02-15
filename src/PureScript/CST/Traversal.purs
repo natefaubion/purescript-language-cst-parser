@@ -18,12 +18,24 @@ module PureScript.CST.Traversal
   , rewriteExprWithContextM
   , rewriteDeclWithContextM
   , rewriteTypeWithContextM
+  , MonoidalRewrite
+  , defaultMonoidalVisitor
+  , foldMapModule
+  , foldMapBinder
+  , foldMapDecl
+  , foldMapExpr
+  , foldMapType
   ) where
 
 import Prelude
 
+import Control.Monad.Free (Free, runFree)
 import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
 import Data.Bitraversable (bitraverse, ltraverse)
+import Data.Const (Const(..))
+import Data.Functor.Compose (Compose(..))
+import Data.Identity (Identity(..))
+import Data.Newtype (un)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), curry, uncurry)
@@ -32,6 +44,7 @@ import Type.Row (type (+))
 
 type Rewrite e f g = g e -> f (g e)
 type RewriteWithContext c e f g = c -> g e -> f (Tuple c (g e))
+type MonoidalRewrite e m g = g e -> m
 
 type OnBinder t r = (onBinder :: t Binder | r)
 type OnDecl t r = (onDecl :: t Declaration | r)
@@ -60,6 +73,14 @@ defaultVisitorWithContext =
   , onDecl: curry pure
   , onExpr: curry pure
   , onType: curry pure
+  }
+
+defaultMonoidalVisitor :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) }
+defaultMonoidalVisitor =
+  { onBinder: mempty
+  , onDecl: mempty
+  , onExpr: mempty
+  , onType: mempty
   }
 
 traverseModule
@@ -464,11 +485,11 @@ rewriteModuleTopDownM = rewriteTopDownM traverseModule
 rewriteBinderTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Binder
 rewriteBinderTopDownM = rewriteTopDownM _.onBinder
 
-rewriteExprTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Expr
-rewriteExprTopDownM = rewriteTopDownM _.onExpr
-
 rewriteDeclTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Declaration
 rewriteDeclTopDownM = rewriteTopDownM _.onDecl
+
+rewriteExprTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Expr
+rewriteExprTopDownM = rewriteTopDownM _.onExpr
 
 rewriteTypeTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Type
 rewriteTypeTopDownM = rewriteTopDownM _.onType
@@ -503,11 +524,50 @@ rewriteModuleWithContextM = rewriteWithContextM traverseModule
 rewriteBinderWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Binder
 rewriteBinderWithContextM = rewriteWithContextM _.onBinder
 
-rewriteExprWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Expr
-rewriteExprWithContextM = rewriteWithContextM _.onExpr
-
 rewriteDeclWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Declaration
 rewriteDeclWithContextM = rewriteWithContextM _.onDecl
 
+rewriteExprWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Expr
+rewriteExprWithContextM = rewriteWithContextM _.onExpr
+
 rewriteTypeWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Type
 rewriteTypeWithContextM = rewriteWithContextM _.onType
+
+topDownMonoidalTraversal
+  :: forall e m
+   . Monoid m
+  => { | OnPureScript (MonoidalRewrite e m) }
+  -> { | OnPureScript (Rewrite e (Compose (Free Identity) (Const m))) }
+topDownMonoidalTraversal visitor = visitor'
+  where
+  visitor' =
+    { onBinder: \a -> Compose (pure (Const (visitor.onBinder a))) <*> traverseBinder visitor' a
+    , onExpr: \a -> Compose (pure (Const (visitor.onExpr a))) <*> traverseExpr visitor' a
+    , onDecl: \a -> Compose (pure (Const (visitor.onDecl a))) <*> traverseDecl visitor' a
+    , onType: \a -> Compose (pure (Const (visitor.onType a))) <*> traverseType visitor' a
+    }
+
+monoidalRewrite
+  :: forall e m g
+   . Monoid m
+  => ({ | OnPureScript (Rewrite e (Compose (Free Identity) (Const m))) } -> Rewrite e (Compose (Free Identity) (Const m)) g)
+  -> { | OnPureScript (MonoidalRewrite e m) }
+  -> MonoidalRewrite e m g
+monoidalRewrite traversal visitor g = do
+  let visitor' = topDownMonoidalTraversal visitor
+  un Const (runFree (un Identity) (un Compose ((traversal visitor') g)))
+
+foldMapModule :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) } -> MonoidalRewrite e m Module
+foldMapModule = monoidalRewrite traverseModule
+
+foldMapBinder :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) } -> MonoidalRewrite e m Binder
+foldMapBinder = monoidalRewrite _.onBinder
+
+foldMapDecl :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) } -> MonoidalRewrite e m Declaration
+foldMapDecl = monoidalRewrite _.onDecl
+
+foldMapExpr :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) } -> MonoidalRewrite e m Expr
+foldMapExpr = monoidalRewrite _.onExpr
+
+foldMapType :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) } -> MonoidalRewrite e m Type
+foldMapType = monoidalRewrite _.onType
