@@ -393,7 +393,6 @@ rewriteModuleBottomUpM = traverseModule <<< bottomUpTraversal
 rewriteModuleTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
 rewriteModuleTopDownM = traverseModule <<< topDownTraversal
 
-
 topDownTraversalWithContext
   :: forall c m e
    . Monad m
@@ -408,9 +407,15 @@ topDownTraversalWithContext visitor = visitor'
     , onType: \a -> ReaderT \ctx -> visitor.onType ctx a >>= uncurry (flip (runReaderT <<< traverseType visitor'))
     }
 
-rewriteWithContextM :: forall c m e g. Monad m => ({ | OnPureScript (Rewrite e (ReaderT c m)) } -> Rewrite e (ReaderT c m) g) -> { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m g
-rewriteWithContextM traversal k ctx g = Tuple ctx <$> (runReaderT (traversal (topDownTraversalWithContext k) g) ctx)
-
+rewriteWithContextM
+  :: forall c m e g
+   . Monad m
+  => ({ | OnPureScript (Rewrite e (ReaderT c m)) } -> Rewrite e (ReaderT c m) g)
+  -> { | OnPureScript (RewriteWithContext c e m) }
+  -> RewriteWithContext c e m g
+rewriteWithContextM traversal visitor ctx g = do
+  let visitor' = topDownTraversalWithContext visitor
+  Tuple ctx <$> (runReaderT ((traversal visitor') g) ctx)
 
 -- TODO: These can probably just be created by the consumer
 
@@ -418,4 +423,4 @@ rewriteModuleWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteW
 rewriteModuleWithContextM = rewriteWithContextM traverseModule
 
 rewriteExprWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Expr
-rewriteExprWithContextM = rewriteWithContextM traverseExpr
+rewriteExprWithContextM = rewriteWithContextM _.onExpr
