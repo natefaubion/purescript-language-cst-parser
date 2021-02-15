@@ -6,7 +6,7 @@ import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple, uncurry)
+import Data.Tuple (Tuple(..), uncurry)
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
@@ -394,29 +394,28 @@ rewriteModuleTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) }
 rewriteModuleTopDownM = traverseModule <<< topDownTraversal
 
 
--- TODO: Everything below here is probably nonsense.
-
 topDownTraversalWithContext
   :: forall c m e
    . Monad m
-  => { | OnPureScript (Rewrite e m) }
-  -> { | OnPureScript (RewriteWithContext c e m) }
+  => { | OnPureScript (RewriteWithContext c e m) }
+  -> { | OnPureScript (Rewrite e (ReaderT c m)) }
 topDownTraversalWithContext visitor = visitor'
   where
-  goBinder a = ReaderT \ctx -> visitor'.onBinder ctx a >>= uncurry (flip (runReaderT <<< goBinder))
-
-  goExpr a = ReaderT \ctx -> visitor'.onExpr ctx a >>= uncurry (flip (runReaderT <<< goExpr))
-
-  goDecl a = ReaderT \ctx -> visitor'.onDecl ctx a >>= uncurry (flip (runReaderT <<< goDecl))
-
-  goType a = ReaderT \ctx -> visitor'.onType ctx a >>= uncurry (flip (runReaderT <<< goType))
-
   visitor' =
-    { onBinder: \c a -> runReaderT (goBinder a) c
-    , onExpr: \c a -> runReaderT (goExpr a) c
-    , onDecl: \c a -> runReaderT (goDecl a) c
-    , onType: \c a -> runReaderT (goType a) c
+    { onBinder: \a -> ReaderT \ctx -> visitor.onBinder ctx a >>= uncurry (flip (runReaderT <<< traverseBinder visitor'))
+    , onExpr: \a -> ReaderT \ctx -> visitor.onExpr ctx a >>= uncurry (flip (runReaderT <<< traverseExpr visitor'))
+    , onDecl: \a -> ReaderT \ctx -> visitor.onDecl ctx a >>= uncurry (flip (runReaderT <<< traverseDecl visitor'))
+    , onType: \a -> ReaderT \ctx -> visitor.onType ctx a >>= uncurry (flip (runReaderT <<< traverseType visitor'))
     }
 
---rewriteExprWithContextM :: forall c e m. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Module
---rewriteExprWithContextM visitors = ?a --(topDownTraversalWithContext visitors)
+rewriteWithContextM :: forall c m e g. Monad m => ({ | OnPureScript (Rewrite e (ReaderT c m)) } -> Rewrite e (ReaderT c m) g) -> { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m g
+rewriteWithContextM traversal k ctx g = Tuple ctx <$> (runReaderT (traversal (topDownTraversalWithContext k) g) ctx)
+
+
+-- TODO: These can probably just be created by the consumer
+
+rewriteModuleWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Module
+rewriteModuleWithContextM = rewriteWithContextM traverseModule
+
+rewriteExprWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Expr
+rewriteExprWithContextM = rewriteWithContextM traverseExpr
