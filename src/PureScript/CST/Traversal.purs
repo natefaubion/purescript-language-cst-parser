@@ -1,4 +1,24 @@
-module PureScript.CST.Traversal where
+module PureScript.CST.Traversal
+  ( Rewrite
+  , defaultVisitor
+  , rewriteModuleBottomUpM
+  , rewriteBinderBottomUpM
+  , rewriteExprBottomUpM
+  , rewriteDeclBottomUpM
+  , rewriteTypeBottomUpM
+  , rewriteModuleTopDownM
+  , rewriteBinderTopDownM
+  , rewriteExprTopDownM
+  , rewriteDeclTopDownM
+  , rewriteTypeTopDownM
+  , RewriteWithContext
+  , defaultVisitorWithContext
+  , rewriteModuleWithContextM
+  , rewriteBinderWithContextM
+  , rewriteExprWithContextM
+  , rewriteDeclWithContextM
+  , rewriteTypeWithContextM
+  ) where
 
 import Prelude
 
@@ -6,7 +26,7 @@ import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
 import Data.Bitraversable (bitraverse, ltraverse)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
-import Data.Tuple (Tuple(..), uncurry)
+import Data.Tuple (Tuple(..), curry, uncurry)
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
 import Type.Row (type (+))
 
@@ -25,6 +45,22 @@ type OnPureScript t =
   + OnType t
   + ()
   )
+
+defaultVisitor :: forall e f. Applicative f => { | OnPureScript (Rewrite e f) }
+defaultVisitor =
+  { onBinder: pure
+  , onDecl: pure
+  , onExpr: pure
+  , onType: pure
+  }
+
+defaultVisitorWithContext :: forall c e m. Monad m => { | OnPureScript (RewriteWithContext c e m) }
+defaultVisitorWithContext =
+  { onBinder: curry pure
+  , onDecl: curry pure
+  , onExpr: curry pure
+  , onType: curry pure
+  }
 
 traverseModule
   :: forall e f r
@@ -373,6 +409,31 @@ bottomUpTraversal visitor = visitor'
     , onDecl:   \a -> visitor.onDecl   =<< traverseDecl visitor' a
     }
 
+rewriteBottomUpM
+  :: forall m e g
+   . Monad m
+  => ({ | OnPureScript (Rewrite e m) } -> Rewrite e m g)
+  -> { | OnPureScript (Rewrite e m) }
+  -> Rewrite e m g
+rewriteBottomUpM traversal visitor = do
+  let visitor' = bottomUpTraversal visitor
+  traversal visitor'
+
+rewriteModuleBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
+rewriteModuleBottomUpM = rewriteBottomUpM traverseModule
+
+rewriteBinderBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Binder
+rewriteBinderBottomUpM = rewriteBottomUpM _.onBinder
+
+rewriteExprBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Expr
+rewriteExprBottomUpM = rewriteBottomUpM _.onExpr
+
+rewriteDeclBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Declaration
+rewriteDeclBottomUpM = rewriteBottomUpM _.onDecl
+
+rewriteTypeBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Type
+rewriteTypeBottomUpM = rewriteBottomUpM _.onType
+
 topDownTraversal
   :: forall m e
    . Monad m
@@ -387,11 +448,30 @@ topDownTraversal visitor = visitor'
     , onDecl:   \a -> visitor.onDecl a   >>= traverseDecl visitor'
     }
 
-rewriteModuleBottomUpM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
-rewriteModuleBottomUpM = traverseModule <<< bottomUpTraversal
+rewriteTopDownM
+  :: forall m e g
+   . Monad m
+  => ({ | OnPureScript (Rewrite e m) } -> Rewrite e m g)
+  -> { | OnPureScript (Rewrite e m) }
+  -> Rewrite e m g
+rewriteTopDownM traversal visitor = do
+  let visitor' = topDownTraversal visitor
+  traversal visitor'
 
 rewriteModuleTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Module
-rewriteModuleTopDownM = traverseModule <<< topDownTraversal
+rewriteModuleTopDownM = rewriteTopDownM traverseModule
+
+rewriteBinderTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Binder
+rewriteBinderTopDownM = rewriteTopDownM _.onBinder
+
+rewriteExprTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Expr
+rewriteExprTopDownM = rewriteTopDownM _.onExpr
+
+rewriteDeclTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Declaration
+rewriteDeclTopDownM = rewriteTopDownM _.onDecl
+
+rewriteTypeTopDownM :: forall e m. Monad m => { | OnPureScript (Rewrite e m) } -> Rewrite e m Type
+rewriteTypeTopDownM = rewriteTopDownM _.onType
 
 topDownTraversalWithContext
   :: forall c m e
@@ -417,10 +497,17 @@ rewriteWithContextM traversal visitor ctx g = do
   let visitor' = topDownTraversalWithContext visitor
   Tuple ctx <$> (runReaderT ((traversal visitor') g) ctx)
 
--- TODO: These can probably just be created by the consumer
-
 rewriteModuleWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Module
 rewriteModuleWithContextM = rewriteWithContextM traverseModule
 
+rewriteBinderWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Binder
+rewriteBinderWithContextM = rewriteWithContextM _.onBinder
+
 rewriteExprWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Expr
 rewriteExprWithContextM = rewriteWithContextM _.onExpr
+
+rewriteDeclWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Declaration
+rewriteDeclWithContextM = rewriteWithContextM _.onDecl
+
+rewriteTypeWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Type
+rewriteTypeWithContextM = rewriteWithContextM _.onType
