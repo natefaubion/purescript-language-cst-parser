@@ -400,6 +400,7 @@ data LetBinding e
   = LetBindingSignature (Labeled (Name Ident) (Type e))
   | LetBindingName (ValueBindingFields e)
   | LetBindingPattern (Binder e) SourceToken (Where e)
+  | LetBindingError e
 
 type DoBlock e =
   { keyword :: SourceToken
@@ -410,6 +411,7 @@ data DoStatement e
   = DoLet SourceToken (NonEmptyArray (LetBinding e))
   | DoDiscard (Expr e)
   | DoBind (Binder e) SourceToken (Expr e)
+  | DoError e
 
 type AdoBlock e =
   { keyword :: SourceToken

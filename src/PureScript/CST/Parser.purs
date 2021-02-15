@@ -24,7 +24,7 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.Layout (currentIndent)
-import PureScript.CST.Parser.Monad (Parser, PositionedError, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
+import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourcePos, SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
@@ -612,7 +612,7 @@ parseIf = do
 parseLetIn :: Parser (Recovered Expr)
 parseLetIn = do
   keyword <- tokKeyword "let"
-  bindings <- layoutNonEmpty parseLetBinding
+  bindings <- layoutNonEmpty (recoverLetBinding parseLetBinding)
   in_ <- tokKeyword "in"
   body <- parseExpr
   pure $ ExprLet { keyword, bindings, in: in_, body }
@@ -657,13 +657,13 @@ parseBadSingleCaseGuarded binder = do
 parseDo :: Parser (Recovered Expr)
 parseDo = do
   keyword <- tokQualifiedKeyword "do"
-  statements <- layoutNonEmpty parseDoStatement
+  statements <- layoutNonEmpty (recoverDoStatement parseDoStatement)
   pure $ ExprDo { keyword, statements }
 
 parseAdo :: Parser (Recovered Expr)
 parseAdo = do
   keyword <- tokQualifiedKeyword "ado"
-  statements <- layout parseDoStatement
+  statements <- layout (recoverDoStatement parseDoStatement)
   in_ <- tokKeyword "in"
   result <- parseExpr
   pure $ ExprAdo { keyword, statements, in: in_, result }
@@ -739,7 +739,7 @@ parseRecordLabeled valueParser =
 
 parseDoStatement :: Parser (Recovered DoStatement)
 parseDoStatement = defer \_ ->
-  DoLet <$> tokKeyword "let" <*> layoutNonEmpty parseLetBinding
+  DoLet <$> tokKeyword "let" <*> layoutNonEmpty (recoverLetBinding parseLetBinding)
     <|> uncurry DoBind <$> try (Tuple <$> parseBinder <*> tokLeftArrow) <*> parseExpr
     <|> DoDiscard <$> parseExpr
 
@@ -789,7 +789,7 @@ parseWhere :: Parser (Recovered Where)
 parseWhere = defer \_ ->
   { expr: _, bindings: _ }
     <$> parseExpr
-    <*> optional (Tuple <$> tokKeyword "where" <*> layoutNonEmpty parseLetBinding)
+    <*> optional (Tuple <$> tokKeyword "where" <*> layoutNonEmpty (recoverLetBinding parseLetBinding))
 
 parseBinder :: Parser (Recovered Binder)
 parseBinder = defer \_ -> do
@@ -1127,9 +1127,9 @@ reservedKeywords = Set.fromFoldable
   , "where"
   ]
 
-recoverIndent :: forall a. (PositionedError -> Array SourceToken -> a) -> Parser a -> Parser a
-recoverIndent mkNode = recover \err ->
-  map (mkNode err) <<< recoverTokensWhile \tok indent ->
+recoverIndent :: forall a. (RecoveredError -> a) -> Parser a -> Parser a
+recoverIndent mkNode = recover \{ position, error } ->
+  map (\tokens -> mkNode { position, error, tokens }) <<< recoverTokensWhile \tok indent ->
     case tok.value of
       TokLayoutEnd col -> col > indent
       TokLayoutSep col -> col > indent
@@ -1154,5 +1154,10 @@ recoverTokensWhile p initStream = go [] initStream
         Recovery acc tok.range.start stream
 
 recoverDecl :: RecoveryStrategy Declaration
-recoverDecl = recoverIndent \{ error, position } tokens ->
-  DeclError { error, position, tokens }
+recoverDecl = recoverIndent DeclError
+
+recoverLetBinding :: RecoveryStrategy LetBinding
+recoverLetBinding = recoverIndent LetBindingError
+
+recoverDoStatement :: RecoveryStrategy DoStatement
+recoverDoStatement = recoverIndent DoError
