@@ -25,6 +25,17 @@ module PureScript.CST.Traversal
   , foldMapDecl
   , foldMapExpr
   , foldMapType
+  , PureRewrite
+  , rewriteModuleBottomUp
+  , rewriteBinderBottomUp
+  , rewriteExprBottomUp
+  , rewriteDeclBottomUp
+  , rewriteTypeBottomUp
+  , rewriteModuleTopDown
+  , rewriteBinderTopDown
+  , rewriteExprTopDown
+  , rewriteDeclTopDown
+  , rewriteTypeTopDown
   ) where
 
 import Prelude
@@ -45,6 +56,8 @@ import Type.Row (type (+))
 type Rewrite e f g = g e -> f (g e)
 type RewriteWithContext c e f g = c -> g e -> f (Tuple c (g e))
 type MonoidalRewrite e m g = g e -> m
+type PureRewrite e g = g e -> g e
+type PureRewriteWithContext c e g = c -> g e -> g e
 
 type OnBinder t r = (onBinder :: t Binder | r)
 type OnDecl t r = (onDecl :: t Declaration | r)
@@ -571,3 +584,77 @@ foldMapExpr = monoidalRewrite _.onExpr
 
 foldMapType :: forall e m. Monoid m => { | OnPureScript (MonoidalRewrite e m) } -> MonoidalRewrite e m Type
 foldMapType = monoidalRewrite _.onType
+
+bottomUpPureTraversal
+  :: forall e
+   . { | OnPureScript (PureRewrite e) }
+  -> { | OnPureScript (Rewrite e (Free Identity)) }
+bottomUpPureTraversal visitor = visitor'
+  where
+  visitor' =
+    { onBinder: \a -> pure <<< visitor.onBinder =<< traverseBinder visitor' a
+    , onExpr:   \a -> pure <<< visitor.onExpr   =<< traverseExpr visitor' a
+    , onType:   \a -> pure <<< visitor.onType   =<< traverseType visitor' a
+    , onDecl:   \a -> pure <<< visitor.onDecl   =<< traverseDecl visitor' a
+    }
+
+rewriteBottomUp
+  :: forall e g
+   . ({ | OnPureScript (Rewrite e (Free Identity)) } -> Rewrite e (Free Identity) g)
+  -> { | OnPureScript (PureRewrite e) }
+  -> PureRewrite e g
+rewriteBottomUp traversal visitor = do
+  let visitor' = bottomUpPureTraversal visitor
+  runFree (un Identity) <<< traversal visitor'
+
+rewriteModuleBottomUp :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Module
+rewriteModuleBottomUp = rewriteBottomUp traverseModule
+
+rewriteBinderBottomUp :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Binder
+rewriteBinderBottomUp = rewriteBottomUp _.onBinder
+
+rewriteExprBottomUp :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Expr
+rewriteExprBottomUp = rewriteBottomUp _.onExpr
+
+rewriteDeclBottomUp :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Declaration
+rewriteDeclBottomUp = rewriteBottomUp _.onDecl
+
+rewriteTypeBottomUp :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Type
+rewriteTypeBottomUp = rewriteBottomUp _.onType
+
+topDownPureTraversal
+  :: forall e
+   . { | OnPureScript (PureRewrite e) }
+  -> { | OnPureScript (Rewrite e (Free Identity)) }
+topDownPureTraversal visitor = visitor'
+  where
+  visitor' =
+    { onBinder: \a -> pure (visitor.onBinder a) >>= traverseBinder visitor'
+    , onExpr:   \a -> pure (visitor.onExpr a)   >>= traverseExpr visitor'
+    , onType:   \a -> pure (visitor.onType a)   >>= traverseType visitor'
+    , onDecl:   \a -> pure (visitor.onDecl a)   >>= traverseDecl visitor'
+    }
+
+rewriteTopDown
+  :: forall e g
+   . ({ | OnPureScript (Rewrite e (Free Identity)) } -> Rewrite e (Free Identity) g)
+  -> { | OnPureScript (PureRewrite e) }
+  -> PureRewrite e g
+rewriteTopDown traversal visitor = do
+  let visitor' = topDownPureTraversal visitor
+  runFree (un Identity) <<< traversal visitor'
+
+rewriteModuleTopDown :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Module
+rewriteModuleTopDown = rewriteTopDown traverseModule
+
+rewriteBinderTopDown :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Binder
+rewriteBinderTopDown = rewriteTopDown _.onBinder
+
+rewriteExprTopDown :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Expr
+rewriteExprTopDown = rewriteTopDown _.onExpr
+
+rewriteDeclTopDown :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Declaration
+rewriteDeclTopDown = rewriteTopDown _.onDecl
+
+rewriteTypeTopDown :: forall e. { | OnPureScript (PureRewrite e) } -> PureRewrite e Type
+rewriteTypeTopDown = rewriteTopDown _.onType
