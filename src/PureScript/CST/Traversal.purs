@@ -399,6 +399,7 @@ traverseLetBinding k = case _ of
   LetBindingSignature name -> LetBindingSignature <$> traverseLabeled k.onType name
   LetBindingName valueBinders -> LetBindingName <$> traverseValueBindingFields k valueBinders
   LetBindingPattern binder tok w -> LetBindingPattern <$> traverseBinder k binder <@> tok <*> traverseWhere k w
+  LetBindingError e -> pure (LetBindingError e)
 
 traverseValueBindingFields
   :: forall e f r
@@ -423,6 +424,7 @@ traverseDoStatement k = case _ of
   DoLet tok letBindings -> DoLet tok <$> traverse (traverseLetBinding k) letBindings
   DoDiscard expr -> DoDiscard <$> k.onExpr expr
   DoBind binder tok expr -> DoBind <$> traverseBinder k binder <@> tok <*> k.onExpr expr
+  DoError e -> pure (DoError e)
 
 traverseDoBlock
   :: forall e f r
