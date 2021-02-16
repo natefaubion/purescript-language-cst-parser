@@ -20,13 +20,16 @@ module PureScript.CST.Parser.Monad
 
 import Prelude
 
-import Control.Alt (class Alt, (<|>))
-import Control.Lazy (class Lazy, fix)
+import Control.Alt (class Alt)
+import Control.Lazy (class Lazy)
+import Control.Monad.ST.Class (liftST)
 import Data.Array as Array
+import Data.Array.ST as STArray
 import Data.Either (Either(..))
 import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Effect.Unsafe (unsafePerformEffect)
 import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
 import PureScript.CST.TokenStream as TokenStream
@@ -83,6 +86,39 @@ data Recovery a = Recovery a SourcePos TokenStream
 
 derive instance functorRecovery :: Functor Recovery
 
+type FoldBox a b s =
+  { init :: Unit -> s
+  , step :: s -> a -> s
+  , done :: s -> b
+  }
+
+foreign import data Fold :: Type -> Type -> Type
+
+mkFold :: forall a b s. FoldBox a b s -> Fold a b
+mkFold = unsafeCoerce
+
+unFold :: forall r a b. (forall s. FoldBox a b s -> r) -> Fold a b -> r
+unFold = unsafeCoerce
+
+foldMaybe :: forall a. Fold a (Maybe a)
+foldMaybe = mkFold
+  { init: const Nothing
+  , step: const Just
+  , done: identity
+  }
+
+foldArray :: forall a. Fold a (Array a)
+foldArray = mkFold
+  { init: \_ ->
+      unsafePerformEffect $ liftST STArray.empty
+  , step: \arr a ->
+      unsafePerformEffect $ liftST do
+        _ <- STArray.push a arr
+        pure arr
+  , done:
+      unsafePerformEffect <<< liftST <<< STArray.unsafeFreeze
+  }
+
 data Parser a
   = Take (SourceToken -> Either ParseError a)
   | Eof (Array (Comment LineFeed) -> a)
@@ -92,6 +128,7 @@ data Parser a
   | LookAhead (Parser a)
   | Defer (Z.Lazy (Parser a))
   | Recover (PositionedError -> TokenStream -> Recovery a) (Parser a)
+  | Iter (Fold UnsafeBoundValue a) (Parser UnsafeBoundValue)
   | Pure a
   | Bind (Parser UnsafeBoundValue) (Queue ParserK UnsafeBoundValue a)
 
@@ -135,18 +172,17 @@ fail = Fail
 try :: forall a. Parser a -> Parser a
 try = Try
 
+iter :: forall a b. Fold a b -> Parser a -> Parser b
+iter a b = Iter (unsafeCoerce a) (unsafeCoerce b)
+
 lookAhead :: forall a. Parser a -> Parser a
 lookAhead = LookAhead
 
 many :: forall a. Parser a -> Parser (Array a)
-many p = fix \go ->
-  Array.cons <$> p <*> go
-    <|> pure []
+many = iter foldArray
 
 optional :: forall a. Parser a -> Parser (Maybe a)
-optional p =
-  Just <$> p
-    <|> pure Nothing
+optional = iter foldMaybe
 
 eof :: Parser (Array (Comment LineFeed))
 eof = Eof identity
@@ -238,11 +274,11 @@ runParser' = \state parser ->
           res
     Take k ->
       case TokenStream.step state.stream of
-        TokenError errPos err errStream ->
+        TokenError errPos err errStream _ ->
           ParseFail err errPos state errStream
         TokenEOF errPos _ ->
           go stack state (Fail errPos UnexpectedEof)
-        TokenCons tok nextPos nextStream ->
+        TokenCons tok nextPos nextStream _ ->
           case k tok of
             Left err ->
               go stack state (Fail tok.range.start err)
@@ -250,16 +286,30 @@ runParser' = \state parser ->
               go stack { consumed: true, errors, position: nextPos, stream: nextStream } (Pure a)
     Eof k ->
       case TokenStream.step state.stream of
-        TokenError errPos err errStream ->
+        TokenError errPos err errStream _ ->
           ParseFail err errPos state errStream
         TokenEOF eofPos comments ->
           go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
-        TokenCons tok _ _ ->
+        TokenCons tok _ _ _ ->
           go stack state (Fail tok.range.start (ExpectedEof tok.value))
+    Iter f p -> do
+      let
+        Tuple state' a = f # unFold \{ init, step, done } -> do
+          let
+            iter acc state' = case runParser' (state' { consumed = false }) p of
+              ParseSucc a state'' ->
+                iter (step acc a) state''
+              res@(ParseFail err errPos state'' _)
+                | state''.consumed ->
+                    Tuple state'' (Fail errPos err)
+                | otherwise ->
+                    Tuple state' (Pure (done acc))
+          iter (init unit) state
+      go stack state' a
     Defer z ->
       go stack state (Z.force z)
     Recover k p ->
-      go (StkRecover stack state k) state p
+      go (StkRecover stack state k) (state { consumed = false }) p
 
   unwindFail :: ParseError -> SourcePos -> ParserState -> ParserStack UnsafeBoundValue -> FailUnwind UnsafeBoundValue
   unwindFail error position state@{ errors } = case _ of
@@ -269,19 +319,22 @@ runParser' = \state parser ->
       if state.consumed then
         unwindFail error position state prevStack
       else
-        FailAlt prevStack (prevState { errors = errors }) prev
+        FailAlt prevStack prevState prev
     StkTry prevStack prevState ->
       unwindFail error position (state { consumed = prevState.consumed }) prevStack
-    StkRecover prevStack prevState k -> do
-      let posError = { error, position }
-      let nextErrors = Array.snoc errors posError
-      let (Recovery a nextPos nextStream) = k posError prevState.stream
-      FailRecover prevStack
-        { consumed: true
-        , errors: nextErrors
-        , position: nextPos
-        , stream: nextStream
-        } a
+    StkRecover prevStack prevState k ->
+      if state.consumed then do
+        let posError = { error, position }
+        let nextErrors = Array.snoc errors posError
+        let (Recovery a nextPos nextStream) = k posError prevState.stream
+        FailRecover prevStack
+          { consumed: true
+          , errors: nextErrors
+          , position: nextPos
+          , stream: nextStream
+          } a
+      else
+        unwindFail error position (state { consumed = state.consumed || prevState.consumed }) prevStack
     StkLookAhead prevStack prevState ->
       unwindFail error position prevState prevStack
     StkBinds prevStack _ ->
@@ -295,8 +348,8 @@ runParser' = \state parser ->
       unwindSucc a state prevStack
     StkTry prevStack _ ->
       unwindSucc a state prevStack
-    StkRecover prevStack _ _ ->
-      unwindSucc a state prevStack
+    StkRecover prevStack prevState _ ->
+      unwindSucc a (state { consumed = state.consumed || prevState.consumed }) prevStack
     StkLookAhead prevStack prevState ->
       unwindSucc a prevState prevStack
     StkBinds prevStack queue ->

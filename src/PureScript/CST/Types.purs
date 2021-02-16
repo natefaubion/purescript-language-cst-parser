@@ -70,9 +70,9 @@ data Token
   | TokRawString String
   | TokInt String Int
   | TokNumber String Number
-  | TokLayoutStart
-  | TokLayoutSep
-  | TokLayoutEnd
+  | TokLayoutStart Int
+  | TokLayoutSep Int
+  | TokLayoutEnd Int
 
 derive instance eqToken :: Eq Token
 
@@ -412,6 +412,7 @@ data LetBinding e
   = LetBindingSignature (Labeled (Name Ident) (Type e))
   | LetBindingName (ValueBindingFields e)
   | LetBindingPattern (Binder e) SourceToken (Where e)
+  | LetBindingError e
 
 type DoBlock e =
   { keyword :: SourceToken
@@ -422,6 +423,7 @@ data DoStatement e
   = DoLet SourceToken (NonEmptyArray (LetBinding e))
   | DoDiscard (Expr e)
   | DoBind (Binder e) SourceToken (Expr e)
+  | DoError e
 
 type AdoBlock e =
   { keyword :: SourceToken

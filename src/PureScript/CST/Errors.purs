@@ -117,9 +117,9 @@ printTokenError = case _ of
     "int literal " <> raw
   TokNumber raw _ ->
     "number literal " <> raw
-  TokLayoutStart ->
+  TokLayoutStart _ ->
     "start of indented block"
-  TokLayoutSep ->
+  TokLayoutSep _ ->
     "new indented block item"
-  TokLayoutEnd ->
+  TokLayoutEnd _ ->
     "end of indented block"

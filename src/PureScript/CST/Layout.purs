@@ -4,11 +4,9 @@ import Prelude
 
 import Data.Array as Array
 import Data.Foldable (find)
-import Data.Lazy as Lazy
 import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..), snd, uncurry)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), step)
 import PureScript.CST.Types (SourcePos, SourceToken, Token(..))
 
 type LayoutStack = List (Tuple SourcePos LayoutDelim)
@@ -40,6 +38,16 @@ data LayoutDelim
 derive instance eqLayoutDelim :: Eq LayoutDelim
 derive instance ordLayoutDelim :: Ord LayoutDelim
 
+currentIndent :: LayoutStack -> Maybe SourcePos
+currentIndent = go
+  where
+  go = case _ of
+    Tuple pos lyt : stk
+      | isIndented lyt -> Just pos
+      | otherwise -> go stk
+    _ ->
+      Nothing
+
 isIndented :: LayoutDelim -> Boolean
 isIndented = case _ of
   LytLet -> true
@@ -64,7 +72,7 @@ lytToken pos value =
   , value
   }
 
-insertLayout :: SourceToken -> SourcePos -> LayoutStack -> Tuple LayoutStack (Array SourceToken)
+insertLayout :: SourceToken -> SourcePos -> LayoutStack -> Tuple LayoutStack (Array (Tuple SourceToken LayoutStack))
 insertLayout src@{ range, value: tok } nextPos stack =
   insert (Tuple stack [])
   where
@@ -117,10 +125,10 @@ insertLayout src@{ range, value: tok } nextPos stack =
         --      foo <- ...
         --      let bar = ...
         --      in ...
-        Tuple ((Tuple _ LytLetStmt) : (Tuple _ LytAdo) : stk') acc' ->
-          Tuple stk' acc' # insertEnd # insertEnd # insertToken src
-        Tuple (Tuple _ lyt : stk') acc' | isIndented lyt ->
-          Tuple stk' acc' # insertEnd # insertToken src
+        Tuple ((Tuple pos1 LytLetStmt) : (Tuple pos2 LytAdo) : stk') acc' ->
+          Tuple stk' acc' # insertEnd pos1.column # insertEnd pos2.column # insertToken src
+        Tuple (Tuple pos1 lyt : stk') acc' | isIndented lyt ->
+          Tuple stk' acc' # insertEnd pos1.column # insertToken src
         _ ->
           state # insertDefault # popStack (_ == LytProperty)
       where
@@ -312,7 +320,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     --     foo = 42
     case find (isIndented <<< snd) stk of
       Just (Tuple pos _) | nextPos.column <= pos.column -> state
-      _ -> state # pushStack nextPos lyt # insertToken (lytToken nextPos TokLayoutStart)
+      _ -> state # pushStack nextPos lyt # insertToken (lytToken nextPos (TokLayoutStart nextPos.column))
 
   insertSep state@(Tuple stk acc) = case stk of
     -- LytTopDecl is closed by a separator.
@@ -330,7 +338,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     _ ->
       state
     where
-    sepTok = lytToken tokPos TokLayoutSep
+    sepTok = lytToken tokPos (TokLayoutSep tokPos.column)
 
   insertKwProperty k state =
     case state # insertDefault of
@@ -339,11 +347,11 @@ insertLayout src@{ range, value: tok } nextPos stack =
       state' ->
         k state'
 
-  insertEnd =
-    insertToken (lytToken tokPos TokLayoutEnd)
+  insertEnd indent =
+    insertToken (lytToken tokPos (TokLayoutEnd indent))
 
   insertToken token (Tuple stk acc) =
-    Tuple stk (acc `Array.snoc` token)
+    Tuple stk (acc `Array.snoc` (Tuple token stk))
 
   pushStack lytPos lyt (Tuple stk acc) =
     Tuple (Tuple lytPos lyt : stk) acc
@@ -358,7 +366,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
       | p lytPos lyt =
           go stk'
             if isIndented lyt
-            then acc `Array.snoc` lytToken tokPos TokLayoutEnd
+            then acc `Array.snoc` (Tuple (lytToken tokPos (TokLayoutEnd lytPos.column)) stk')
             else acc
     go stk acc =
       Tuple stk acc
@@ -377,17 +385,3 @@ insertLayout src@{ range, value: tok } nextPos stack =
 
   sepP lytPos =
     tokPos.column == lytPos.column && tokPos.line /= lytPos.line
-
-unwindLayout :: SourcePos -> TokenStream -> LayoutStack -> TokenStream
-unwindLayout pos eof = go
-  where
-  go stk = TokenStream $ Lazy.defer \_ -> case stk of
-    Nil -> step eof
-    Tuple _ lyt : tl ->
-      case lyt of
-        LytRoot ->
-          step eof
-        _ | isIndented lyt ->
-              TokenCons (lytToken pos TokLayoutEnd) pos (go tl)
-          | otherwise ->
-              step (go tl)

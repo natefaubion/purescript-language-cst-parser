@@ -23,8 +23,8 @@ import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Tuple (Tuple(..), snd)
 import Partial.Unsafe (unsafeCrashWith)
 import PureScript.CST.Errors (ParseError(..))
-import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, insertLayout, unwindLayout)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, step)
+import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, insertLayout)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, step, unwindLayout)
 import PureScript.CST.Types (Comment(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
 
 data LexResult e a
@@ -193,7 +193,7 @@ lex = init
       case k str of
         LexFail error remaining -> do
           let errPos = bumpText startPos 0 (SCU.take (SCU.length str - SCU.length remaining) str)
-          TokenError errPos (error unit) Nothing
+          TokenError errPos (error unit) Nothing stack
         LexSucc result suffix -> do
           let
             endPos = bumpToken startPos result.token
@@ -301,11 +301,11 @@ bumpToken pos@{ line, column } = case _ of
     bumpText pos 1 raw
   TokRawString raw ->
     bumpText pos 3 raw
-  TokLayoutStart ->
+  TokLayoutStart _ ->
     pos
-  TokLayoutSep ->
+  TokLayoutSep _ ->
     pos
-  TokLayoutEnd ->
+  TokLayoutEnd _ ->
     pos
 
 bumpText :: SourcePos -> Int -> String -> SourcePos
