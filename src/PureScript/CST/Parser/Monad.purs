@@ -86,28 +86,38 @@ data Recovery a = Recovery a SourcePos TokenStream
 
 derive instance functorRecovery :: Functor Recovery
 
-data FoldBox s a b = Fold (Unit -> s) (s -> a -> s) (s -> b) (Parser a)
+type FoldBox a b s =
+  { init :: Unit -> s
+  , step :: s -> a -> s
+  , done :: s -> b
+  }
 
-foreign import data Fold :: Type -> Type
+foreign import data Fold :: Type -> Type -> Type
 
-mkFold :: forall s a b. FoldBox s a b -> Fold b
+mkFold :: forall a b s. FoldBox a b s -> Fold a b
 mkFold = unsafeCoerce
 
-unFold :: forall r b. (forall s a. FoldBox s a b -> r) -> Fold b -> r
+unFold :: forall r a b. (forall s. FoldBox a b s -> r) -> Fold a b -> r
 unFold = unsafeCoerce
 
-foldMaybe :: forall a. Parser a -> Fold (Maybe a)
-foldMaybe = mkFold <<< Fold (const Nothing) (const Just) identity
+foldMaybe :: forall a. Fold a (Maybe a)
+foldMaybe = mkFold
+  { init: const Nothing
+  , step: const Just
+  , done: identity
+  }
 
-foldArray :: forall a. Parser a -> Fold (Array a)
-foldArray = mkFold <<< Fold
-  (\_ ->
-    unsafePerformEffect $ liftST STArray.empty)
-  (\arr a -> unsafePerformEffect $ liftST do
-    _ <- STArray.push a arr
-    pure arr)
-  (\arr ->
-    unsafePerformEffect $ liftST (STArray.unsafeFreeze arr))
+foldArray :: forall a. Fold a (Array a)
+foldArray = mkFold
+  { init: \_ ->
+      unsafePerformEffect $ liftST STArray.empty
+  , step: \arr a ->
+      unsafePerformEffect $ liftST do
+        _ <- STArray.push a arr
+        pure arr
+  , done:
+      unsafePerformEffect <<< liftST <<< STArray.unsafeFreeze
+  }
 
 data Parser a
   = Take (SourceToken -> Either ParseError a)
@@ -118,7 +128,7 @@ data Parser a
   | LookAhead (Parser a)
   | Defer (Z.Lazy (Parser a))
   | Recover (PositionedError -> TokenStream -> Recovery a) (Parser a)
-  | Iter (Fold a)
+  | Iter (Fold UnsafeBoundValue a) (Parser UnsafeBoundValue)
   | Pure a
   | Bind (Parser UnsafeBoundValue) (Queue ParserK UnsafeBoundValue a)
 
@@ -162,14 +172,17 @@ fail = Fail
 try :: forall a. Parser a -> Parser a
 try = Try
 
+iter :: forall a b. Fold a b -> Parser a -> Parser b
+iter a b = Iter (unsafeCoerce a) (unsafeCoerce b)
+
 lookAhead :: forall a. Parser a -> Parser a
 lookAhead = LookAhead
 
 many :: forall a. Parser a -> Parser (Array a)
-many = Iter <<< foldArray
+many = iter foldArray
 
 optional :: forall a. Parser a -> Parser (Maybe a)
-optional = Iter <<< foldMaybe
+optional = iter foldMaybe
 
 eof :: Parser (Array (Comment LineFeed))
 eof = Eof identity
@@ -279,9 +292,9 @@ runParser' = \state parser ->
           go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
         TokenCons tok _ _ _ ->
           go stack state (Fail tok.range.start (ExpectedEof tok.value))
-    Iter f -> do
+    Iter f p -> do
       let
-        Tuple state' a = f # unFold \(Fold init step done p) -> do
+        Tuple state' a = f # unFold \{ init, step, done } -> do
           let
             iter acc state' = case runParser' (state' { consumed = false }) p of
               ParseSucc a state'' ->
