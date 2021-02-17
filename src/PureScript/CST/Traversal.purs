@@ -623,6 +623,9 @@ rewriteExprWithContextM = rewriteWithContextM _.onExpr
 rewriteTypeWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Type
 rewriteTypeWithContextM = rewriteWithContextM _.onType
 
+defer :: forall m a. Monad m => (Unit -> m a) -> m a
+defer = (pure unit >>= _)
+
 topDownMonoidalTraversal
   :: forall e m
    . Monoid m
@@ -631,10 +634,10 @@ topDownMonoidalTraversal
 topDownMonoidalTraversal visitor = visitor'
   where
   visitor' =
-    { onBinder: \a -> Compose (pure (Const (visitor.onBinder a))) <*> traverseBinder visitor' a
-    , onExpr: \a -> Compose (pure (Const (visitor.onExpr a))) <*> traverseExpr visitor' a
-    , onDecl: \a -> Compose (pure (Const (visitor.onDecl a))) <*> traverseDecl visitor' a
-    , onType: \a -> Compose (pure (Const (visitor.onType a))) <*> traverseType visitor' a
+    { onBinder: \a -> Compose (pure (Const (visitor.onBinder a))) <*> Compose (defer \_ -> (un Compose (traverseBinder visitor' a)))
+    , onExpr: \a -> Compose (pure (Const (visitor.onExpr a))) <*> Compose (defer \_ -> (un Compose (traverseExpr visitor' a)))
+    , onDecl: \a -> Compose (pure (Const (visitor.onDecl a))) <*> Compose (defer \_ -> (un Compose (traverseDecl visitor' a)))
+    , onType: \a -> Compose (pure (Const (visitor.onType a))) <*> Compose (defer \_ -> (un Compose (traverseType visitor' a)))
     }
 
 monoidalRewrite
