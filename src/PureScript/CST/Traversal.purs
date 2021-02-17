@@ -1,5 +1,56 @@
 module PureScript.CST.Traversal
-  ( Rewrite
+  ( traverseModule
+  , traverseModuleBody
+  , traverseDecl
+  , traverseForeign
+  , traverseInstance
+  , traverseInstanceHead
+  , traverseInstanceBinding
+  , traverseClassHead
+  , traverseOneOrDelimited
+  , traverseDataHead
+  , traverseDataCtor
+  , traverseType
+  , traverseRow
+  , traverseTypeVarBinding
+  , traverseExpr
+  , traverseDelimited
+  , traverseDelimitedNonEmpty
+  , traverseSeparated
+  , traverseWrapped
+  , traverseRecordLabeled
+  , traverseLabeled
+  , traverseRecordAccessor
+  , traverseRecordUpdate
+  , traverseLambda
+  , traverseIfThenElse
+  , traverseCaseOf
+  , traverseGuarded
+  , traverseGuardedExpr
+  , traversePatternGuard
+  , traverseWhere
+  , traverseLetBinding
+  , traverseValueBindingFields
+  , traverseLetIn
+  , traverseDoStatement
+  , traverseDoBlock
+  , traverseAdoBlock
+  , traverseBinder
+  , bottomUpTraversal
+  , rewriteBottomUpM
+  , topDownTraversal
+  , rewriteTopDownM
+  , topDownTraversalWithContextM
+  , rewriteWithContextM
+  , topDownMonoidalTraversal
+  , monoidalRewrite
+  , bottomUpPureTraversal
+  , rewriteBottomUp
+  , topDownPureTraversal
+  , rewriteTopDown
+  , topDownTraversalWithContext
+  , rewriteWithContext
+  , Rewrite
   , defaultVisitorM
   , rewriteModuleBottomUpM
   , rewriteBinderBottomUpM
