@@ -606,7 +606,7 @@ rewriteWithContextM
   -> RewriteWithContext c e m g
 rewriteWithContextM traversal visitor ctx g = do
   let visitor' = topDownTraversalWithContextM visitor
-  Tuple ctx <$> (runReaderT ((traversal visitor') g) ctx)
+  Tuple ctx <$> runReaderT ((traversal visitor') g) ctx
 
 rewriteModuleWithContextM :: forall c m e. Monad m => { | OnPureScript (RewriteWithContext c e m) } -> RewriteWithContext c e m Module
 rewriteModuleWithContextM = rewriteWithContextM traverseModule
