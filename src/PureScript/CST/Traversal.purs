@@ -514,10 +514,10 @@ bottomUpTraversal
 bottomUpTraversal visitor = visitor'
   where
   visitor' =
-    { onBinder: \a -> visitor.onBinder =<< traverseBinder visitor' a
-    , onExpr:   \a -> visitor.onExpr   =<< traverseExpr visitor' a
-    , onType:   \a -> visitor.onType   =<< traverseType visitor' a
-    , onDecl:   \a -> visitor.onDecl   =<< traverseDecl visitor' a
+    { onBinder: \a -> visitor.onBinder =<< defer (\_ -> traverseBinder visitor' a)
+    , onExpr:   \a -> visitor.onExpr   =<< defer (\_ -> traverseExpr visitor' a)
+    , onType:   \a -> visitor.onType   =<< defer (\_ -> traverseType visitor' a)
+    , onDecl:   \a -> visitor.onDecl   =<< defer (\_ -> traverseDecl visitor' a)
     }
 
 rewriteBottomUpM
