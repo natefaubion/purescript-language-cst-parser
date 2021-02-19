@@ -120,16 +120,22 @@ newtype Wrapped a = Wrapped
   , close :: SourceToken
   }
 
+derive instance newtypeWrapped :: Newtype (Wrapped a) _
+
 newtype Separated a = Separated
   { head :: a
   , tail :: Array (Tuple SourceToken a)
   }
+
+derive instance newtypeSeparated :: Newtype (Separated a) _
 
 newtype Labeled a b = Labeled
   { label :: a
   , separator :: SourceToken
   , value  :: b
   }
+
+derive instance newtypeLabeled :: Newtype (Labeled a b) _
 
 type Delimited a = Wrapped (Maybe (Separated a))
 type DelimitedNonEmpty a = Wrapped (Separated a)
@@ -167,6 +173,8 @@ newtype Row e = Row
   , tail :: Maybe (Tuple SourceToken (Type e))
   }
 
+derive instance newtypeRow :: Newtype (Row e) _
+
 newtype Module e = Module
   { header :: ModuleHeader e
   , body :: ModuleBody e
@@ -184,6 +192,8 @@ newtype ModuleBody e = ModuleBody
   { decls :: Array (Declaration e)
   , trailingComments :: Array (Comment LineFeed)
   }
+
+derive instance newtypeModuleBody :: Newtype (ModuleBody e) _
 
 data Export e
   = ExportValue (Name Ident)
@@ -218,6 +228,8 @@ newtype Instance e = Instance
   { head :: InstanceHead e
   , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding e)))
   }
+
+derive instance newtypeInstance :: Newtype (Instance e) _
 
 data InstanceBinding e
   = InstanceBindingSignature (Labeled (Name Ident) (Type e))
