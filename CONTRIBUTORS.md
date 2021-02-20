@@ -12,4 +12,4 @@ By adding your name to the list below, you agree to license your contributions u
 
 | Username | Name |
 | :------- | :--- |
-| [@example-username](https://github.com/example-username) | Example username
+| [@thomashoneyman](https://github.com/thomashoneyman) | Thomas Honeyman
