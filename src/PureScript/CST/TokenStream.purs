@@ -1,4 +1,11 @@
-module PureScript.CST.TokenStream where
+module PureScript.CST.TokenStream
+  ( TokenStream(..)
+  , TokenStep(..)
+  , step
+  , consTokens
+  , layoutStack
+  , unwindLayout
+  ) where
 
 import Prelude
 

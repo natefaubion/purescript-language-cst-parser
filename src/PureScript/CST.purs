@@ -3,6 +3,11 @@ module PureScript.CST
   , PartialModule(..)
   , parseModule
   , parsePartialModule
+  , parseImportDecl
+  , parseDecl
+  , parseExpr
+  , parseType
+  , parseBinder
   ) where
 
 import Prelude
@@ -16,8 +21,8 @@ import Data.Tuple (Tuple(..))
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered, parseModuleBody, parseModuleHeader)
 import PureScript.CST.Parser as Parser
-import PureScript.CST.Parser.Monad (ParserResult(..), PositionedError, fromParserResult, initialParserState, runParser, runParser')
-import PureScript.CST.Types (Module(..), ModuleHeader)
+import PureScript.CST.Parser.Monad (Parser, ParserResult(..), PositionedError, fromParserResult, initialParserState, runParser, runParser')
+import PureScript.CST.Types (Binder, Declaration, Expr, ImportDecl, Module(..), ModuleHeader, Type)
 import Unsafe.Coerce (unsafeCoerce)
 
 data RecoveredParserResult f
@@ -38,8 +43,26 @@ toRecoveredParserResult = case _ of
   Left err ->
     ParseFailed err
 
+runRecoveredParser :: forall a. Parser (Recovered a) -> String -> RecoveredParserResult a
+runRecoveredParser p = toRecoveredParserResult <<< flip runParser p <<< lex
+
 parseModule :: String -> RecoveredParserResult Module
-parseModule src = toRecoveredParserResult $ runParser (lex src) Parser.parseModule
+parseModule = runRecoveredParser Parser.parseModule
+
+parseImportDecl :: String -> RecoveredParserResult ImportDecl
+parseImportDecl = runRecoveredParser Parser.parseImportDecl
+
+parseDecl :: String -> RecoveredParserResult Declaration
+parseDecl = runRecoveredParser Parser.parseDecl
+
+parseExpr :: String -> RecoveredParserResult Expr
+parseExpr = runRecoveredParser Parser.parseExpr
+
+parseType :: String -> RecoveredParserResult Type
+parseType = runRecoveredParser Parser.parseType
+
+parseBinder :: String -> RecoveredParserResult Binder
+parseBinder = runRecoveredParser Parser.parseBinder
 
 newtype PartialModule e = PartialModule
   { header :: ModuleHeader e

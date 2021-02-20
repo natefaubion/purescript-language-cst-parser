@@ -1,4 +1,11 @@
-module PureScript.CST.Layout where
+module PureScript.CST.Layout
+  ( LayoutStack
+  , LayoutDelim(..)
+  , currentIndent
+  , isIndented
+  , insertLayout
+  , lytToken
+  ) where
 
 import Prelude
 

@@ -1,5 +1,50 @@
 module PureScript.CST.Traversal
-  ( traverseModule
+  ( Rewrite
+  , defaultVisitorM
+  , rewriteModuleBottomUpM
+  , rewriteBinderBottomUpM
+  , rewriteExprBottomUpM
+  , rewriteDeclBottomUpM
+  , rewriteTypeBottomUpM
+  , rewriteModuleTopDownM
+  , rewriteBinderTopDownM
+  , rewriteExprTopDownM
+  , rewriteDeclTopDownM
+  , rewriteTypeTopDownM
+  , RewriteWithContext
+  , defaultVisitorWithContextM
+  , rewriteModuleWithContextM
+  , rewriteBinderWithContextM
+  , rewriteExprWithContextM
+  , rewriteDeclWithContextM
+  , rewriteTypeWithContextM
+  , MonoidalRewrite
+  , defaultMonoidalVisitor
+  , foldMapModule
+  , foldMapBinder
+  , foldMapDecl
+  , foldMapExpr
+  , foldMapType
+  , PureRewrite
+  , defaultVisitor
+  , rewriteModuleBottomUp
+  , rewriteBinderBottomUp
+  , rewriteExprBottomUp
+  , rewriteDeclBottomUp
+  , rewriteTypeBottomUp
+  , rewriteModuleTopDown
+  , rewriteBinderTopDown
+  , rewriteExprTopDown
+  , rewriteDeclTopDown
+  , rewriteTypeTopDown
+  , PureRewriteWithContext
+  , defaultVisitorWithContext
+  , rewriteModuleWithContext
+  , rewriteBinderWithContext
+  , rewriteExprWithContext
+  , rewriteDeclWithContext
+  , rewriteTypeWithContext
+  , traverseModule
   , traverseModuleBody
   , traverseDecl
   , traverseForeign
@@ -50,51 +95,6 @@ module PureScript.CST.Traversal
   , rewriteTopDown
   , topDownTraversalWithContext
   , rewriteWithContext
-  , Rewrite
-  , defaultVisitorM
-  , rewriteModuleBottomUpM
-  , rewriteBinderBottomUpM
-  , rewriteExprBottomUpM
-  , rewriteDeclBottomUpM
-  , rewriteTypeBottomUpM
-  , rewriteModuleTopDownM
-  , rewriteBinderTopDownM
-  , rewriteExprTopDownM
-  , rewriteDeclTopDownM
-  , rewriteTypeTopDownM
-  , RewriteWithContext
-  , defaultVisitorWithContextM
-  , rewriteModuleWithContextM
-  , rewriteBinderWithContextM
-  , rewriteExprWithContextM
-  , rewriteDeclWithContextM
-  , rewriteTypeWithContextM
-  , MonoidalRewrite
-  , defaultMonoidalVisitor
-  , foldMapModule
-  , foldMapBinder
-  , foldMapDecl
-  , foldMapExpr
-  , foldMapType
-  , PureRewrite
-  , defaultVisitor
-  , rewriteModuleBottomUp
-  , rewriteBinderBottomUp
-  , rewriteExprBottomUp
-  , rewriteDeclBottomUp
-  , rewriteTypeBottomUp
-  , rewriteModuleTopDown
-  , rewriteBinderTopDown
-  , rewriteExprTopDown
-  , rewriteDeclTopDown
-  , rewriteTypeTopDown
-  , PureRewriteWithContext
-  , defaultVisitorWithContext
-  , rewriteModuleWithContext
-  , rewriteBinderWithContext
-  , rewriteExprWithContext
-  , rewriteDeclWithContext
-  , rewriteTypeWithContext
   ) where
 
 import Prelude

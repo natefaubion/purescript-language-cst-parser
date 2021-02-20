@@ -1,4 +1,8 @@
-module PureScript.CST.Errors where
+module PureScript.CST.Errors
+  ( ParseError(..)
+  , printParseError
+  , printTokenError
+  ) where
 
 import Prelude
 

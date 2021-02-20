@@ -1,4 +1,7 @@
-module PureScript.CST.Lexer where
+module PureScript.CST.Lexer
+  ( lex
+  , lexWithState
+  ) where
 
 import Prelude
 
@@ -171,18 +174,20 @@ fail :: forall a. ParseError -> Lex LexError a
 fail = Lex <<< LexFail <<< const
 
 lex :: String -> TokenStream
-lex = init
+lex = lexWithState (Tuple { line: 0, column: 0 } LytRoot : Nil) { line: 0, column: 0 }
+
+lexWithState :: LayoutStack -> SourcePos -> String -> TokenStream
+lexWithState = init
   where
-  init :: String -> TokenStream
-  init str = TokenStream $ Lazy.defer \_ -> do
+  init :: LayoutStack -> SourcePos -> String -> TokenStream
+  init initStack initPos str = TokenStream $ Lazy.defer \_ -> do
     let (Lex k) = leadingComments
     case k str of
       LexFail _ _ ->
         unsafeCrashWith "Leading comments can't fail."
       LexSucc leading suffix -> do
-        let startPos = foldl bumpComment { line: 0, column: 0 } leading
-        let stack = Tuple startPos LytRoot : Nil
-        step $ go stack startPos leading suffix
+        let nextPos = foldl bumpComment initPos leading
+        step $ go initStack nextPos leading suffix
 
   go :: LayoutStack -> SourcePos -> Array (Comment LineFeed) -> String -> TokenStream
   go stack startPos leading str = TokenStream $ Lazy.defer \_ ->

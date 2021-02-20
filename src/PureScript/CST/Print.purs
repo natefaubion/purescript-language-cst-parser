@@ -1,4 +1,13 @@
-module PureScript.CST.Print where
+module PureScript.CST.Print
+  ( printToken
+  , printSourceToken
+  , TokenOption(..)
+  , printTokenWithOption
+  , printSourceTokenWithOption
+  , printComment
+  , printLineFeed
+  , printQualified
+  ) where
 
 import Prelude
 

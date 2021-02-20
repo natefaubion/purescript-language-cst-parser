@@ -4,6 +4,8 @@ module PureScript.CST.Parser
   , parseModule
   , parseModuleHeader
   , parseModuleBody
+  , parseImportDecl
+  , parseDecl
   , parseType
   , parseExpr
   , parseBinder
