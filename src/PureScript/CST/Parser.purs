@@ -19,7 +19,6 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
-import Data.Foldable (foldl)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Set (Set)
 import Data.Set as Set
@@ -425,9 +424,11 @@ parseType2 = defer \_ -> do
 
 parseType3 :: Parser (Recovered Type)
 parseType3 = defer \_ -> do
-  foldl (\a (Tuple op b) -> TypeOp a op b)
-    <$> parseType4
-    <*> many (Tuple <$> parseQualifiedOperator <*> parseType4)
+  ty <- parseType4
+  ops <- many (Tuple <$> parseQualifiedOperator <*> parseType4)
+  pure case NonEmptyArray.fromArray ops of
+    Nothing -> ty
+    Just os -> TypeOp ty os
 
 parseType4 :: Parser (Recovered Type)
 parseType4 = defer \_ ->
@@ -435,10 +436,12 @@ parseType4 = defer \_ ->
     <|> parseType5
 
 parseType5 :: Parser (Recovered Type)
-parseType5 = defer \_ ->
-  foldl TypeApp
-    <$> parseTypeAtom
-    <*> many parseTypeAtom
+parseType5 = defer \_ -> do
+  ty <- parseTypeAtom
+  args <- many parseTypeAtom
+  pure case NonEmptyArray.fromArray args of
+    Nothing -> ty
+    Just as -> TypeApp ty as
 
 parseTypeAtom :: Parser (Recovered Type)
 parseTypeAtom = defer \_ ->
@@ -556,16 +559,20 @@ parseExpr = defer \_ -> do
     <|> pure expr
 
 parseExpr1 :: Parser (Recovered Expr)
-parseExpr1 = defer \_ ->
-  foldl (uncurry <<< ExprOp)
-    <$> parseExpr2
-    <*> many (Tuple <$> parseQualifiedOperator <*> parseExpr2)
+parseExpr1 = defer \_ -> do
+  expr <- parseExpr2
+  ops <- many (Tuple <$> parseQualifiedOperator <*> parseExpr2)
+  pure case NonEmptyArray.fromArray ops of
+    Nothing -> expr
+    Just os -> ExprOp expr os
 
 parseExpr2 :: Parser (Recovered Expr)
-parseExpr2 = defer \_ ->
-  foldl (uncurry <<< ExprInfix)
-    <$> parseExpr3
-    <*> many (Tuple <$> parseTickExpr <*> parseExpr)
+parseExpr2 = defer \_ -> do
+  expr <- parseExpr3
+  ops <- many (Tuple <$> parseTickExpr <*> parseExpr)
+  pure case NonEmptyArray.fromArray ops of
+    Nothing -> expr
+    Just os -> ExprInfix expr os
 
 parseTickExpr :: Parser (Wrapped (Recovered Expr))
 parseTickExpr = do
@@ -575,10 +582,12 @@ parseTickExpr = do
   pure $ Wrapped { open, value, close }
 
 parseTickExpr1 :: Parser (Recovered Expr)
-parseTickExpr1 = defer \_ ->
-  foldl (uncurry <<< ExprOp)
-    <$> parseExpr3
-    <*> many (Tuple <$> parseQualifiedOperator <*> parseExpr3)
+parseTickExpr1 = defer \_ -> do
+  expr <- parseExpr3
+  ops <- many (Tuple <$> parseQualifiedOperator <*> parseExpr3)
+  pure case NonEmptyArray.fromArray ops of
+    Nothing -> expr
+    Just os -> ExprOp expr os
 
 parseExpr3 :: Parser (Recovered Expr)
 parseExpr3 = defer \_ -> do
@@ -586,10 +595,12 @@ parseExpr3 = defer \_ -> do
     <|> parseExpr4
 
 parseExpr4 :: Parser (Recovered Expr)
-parseExpr4 = defer \_ ->
-  foldl (ExprApp)
-    <$> parseExpr5
-    <*> many parseExpr5
+parseExpr4 = defer \_ -> do
+  expr <- parseExpr5
+  args <- many parseExpr5
+  pure case NonEmptyArray.fromArray args of
+    Nothing -> expr
+    Just as -> ExprApp expr as
 
 parseExpr5 :: Parser (Recovered Expr)
 parseExpr5 = defer \_ ->
@@ -800,10 +811,12 @@ parseBinder = defer \_ -> do
     <|> pure binder
 
 parseBinder1 :: Parser (Recovered Binder)
-parseBinder1 = defer \_ ->
-  foldl (\a (Tuple op b) -> BinderOp a op b)
-    <$> parseBinder2
-    <*> many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
+parseBinder1 = defer \_ -> do
+  binder <- parseBinder2
+  ops <- many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
+  pure case NonEmptyArray.fromArray ops of
+    Nothing -> binder
+    Just os -> BinderOp binder os
 
 parseBinder2 :: Parser (Recovered Binder)
 parseBinder2 = defer \_ ->

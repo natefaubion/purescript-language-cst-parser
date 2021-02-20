@@ -279,8 +279,8 @@ traverseType k = case _ of
   TypeRecord row -> TypeRecord <$> traverseWrapped (traverseRow k) row
   TypeForall tok1 bindings tok2 typ -> TypeForall tok1 <$> traverse (traverseTypeVarBinding k) bindings <@> tok2 <*> k.onType typ
   TypeKinded typ1 tok typ2 -> TypeKinded <$> k.onType typ1 <@> tok <*> k.onType typ2
-  TypeApp typ1 typ2 -> TypeApp <$> k.onType typ1 <*> k.onType typ2
-  TypeOp typ1 op typ2 -> TypeOp <$> k.onType typ1 <@> op <*> k.onType typ2
+  TypeApp typ args -> TypeApp <$> k.onType typ <*> traverse k.onType args
+  TypeOp typ ops -> TypeOp <$> k.onType typ <*> traverse (traverse k.onType) ops
   TypeArr typ1 tok typ2 -> TypeArr <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeConstrained typ1 tok typ2 -> TypeConstrained <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeParens wrapped -> TypeParens <$> traverseWrapped k.onType wrapped
@@ -313,12 +313,12 @@ traverseExpr k = case _ of
   ExprRecord expr -> ExprRecord <$> traverseDelimited (traverseRecordLabeled k.onExpr) expr
   ExprParens expr -> ExprParens <$> traverseWrapped k.onExpr expr
   ExprTyped expr tok ty -> ExprTyped <$> k.onExpr expr <@> tok <*> k.onType ty
-  ExprInfix expr1 expr2 expr3 -> ExprInfix <$> k.onExpr expr1 <*> traverseWrapped k.onExpr expr2 <*> k.onExpr expr3
-  ExprOp expr1 op expr2 -> ExprOp <$> k.onExpr expr1 <@> op <*> k.onExpr expr2
+  ExprInfix expr ops -> ExprInfix <$> k.onExpr expr <*> traverse (bitraverse (traverseWrapped k.onExpr) k.onExpr) ops
+  ExprOp expr ops -> ExprOp <$> k.onExpr expr <*> traverse (traverse k.onExpr) ops
   ExprNegate tok expr -> ExprNegate tok <$> k.onExpr expr
   ExprRecordAccessor recordAccessor -> ExprRecordAccessor <$> traverseRecordAccessor k recordAccessor
   ExprRecordUpdate expr recordUpdates -> ExprRecordUpdate <$> k.onExpr expr <*> traverseWrapped (traverseSeparated (traverseRecordUpdate k)) recordUpdates
-  ExprApp expr1 expr2 -> ExprApp <$> k.onExpr expr1 <*> k.onExpr expr2
+  ExprApp expr args -> ExprApp <$> k.onExpr expr <*> traverse k.onExpr args
   ExprLambda lambda -> ExprLambda <$> traverseLambda k lambda
   ExprIf ifThenElse -> ExprIf <$> traverseIfThenElse k ifThenElse
   ExprCase caseOf -> ExprCase <$> traverseCaseOf k caseOf
@@ -503,7 +503,7 @@ traverseBinder k = case _ of
   BinderRecord binders -> BinderRecord <$> traverseDelimited (traverseRecordLabeled (traverseBinder k)) binders
   BinderParens binder -> BinderParens <$> traverseWrapped (traverseBinder k) binder
   BinderTyped binder tok typ -> BinderTyped <$> traverseBinder k binder <@> tok <*> k.onType typ
-  BinderOp binder1 op binder2 -> BinderOp <$> traverseBinder k binder1 <@> op <*> traverseBinder k binder2
+  BinderOp binder ops -> BinderOp <$> traverseBinder k binder <*> traverse (traverse (traverseBinder k)) ops
   binder -> k.onBinder binder
 
 bottomUpTraversal
