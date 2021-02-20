@@ -29,21 +29,30 @@ the CST. These folds take a language visitor record with functions for
 handling the primary types in the CST. Default records are provided that do
 nothing for the cases you don't care about.
 
-For example, if one wanted to quickly gather all the identifiers used in the
-expressions of a module, one might use `foldMapModule` and only provide a
-case for `onExpr`.
+For example, if you wanted to quickly gather all the identifiers used in the
+expressions of a module along with locations, you might use `foldMapModule`
+and only provide a case for `onExpr`.
 
 ```purescript
-import Data.Set (Set, singleton)
+import Prelude
+import Data.Map (SemigroupMap(..))
+import Data.Map as Map
+import Data.Set (Set)
+import Data.Set as Set
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Traversal (foldMapModule, defaultMonoidalVisitor)
-import PureScript.CST.Types (Expr(..), Ident, Module, ModuleName, QualifiedName(..))
+import PureScript.CST.Types (Expr(..), Ident, Module, ModuleName, QualifiedName(..), SourceRange)
 
-getExprIdents :: forall a. Module a -> Set (Tuple (Maybe ModuleName) Ident)
+type QualifiedIdent = Tuple (Maybe ModuleName) Ident
+type UsageMap = SemigroupMap QualifiedIdent (Set SourceRange)
+
+getExprIdents :: forall a. Module a -> UsageMap
 getExprIdents = foldMapModule $ defaultMonoidalVisitor
   { onExpr = case _ of
       ExprIdent (QualifiedName ident) ->
-        singleton (Tuple ident.module ident.name)
+        SemigroupMap
+          $ Map.singleton (Tuple ident.module ident.name)
+          $ Set.singleton ident.token.range
       _ -> mempty
   }
 ```
