@@ -87,32 +87,40 @@ newtype Ident = Ident String
 
 derive newtype instance eqIdent :: Eq Ident
 derive newtype instance ordIdent :: Ord Ident
+derive instance newtypeIdent :: Newtype Ident _
 
 newtype Proper = Proper String
 
 derive newtype instance eqProper :: Eq Proper
 derive newtype instance ordProper :: Ord Proper
+derive instance newtypeProper :: Newtype Proper _
 
 newtype Label = Label String
 
 derive newtype instance eqLabel :: Eq Label
 derive newtype instance ordLabel :: Ord Label
+derive instance newtypeLabel :: Newtype Label _
 
 newtype Operator = Operator String
 
 derive newtype instance eqOperator :: Eq Operator
 derive newtype instance ordOperator :: Ord Operator
+derive instance newtypeOperator :: Newtype Operator _
 
 newtype Name a = Name
   { token :: SourceToken
   , name :: a
   }
 
+derive instance newtypeName :: Newtype (Name a) _
+
 newtype QualifiedName a = QualifiedName
   { token :: SourceToken
   , module :: Maybe ModuleName
   , name :: a
   }
+
+derive instance newtypeQualifiedName :: Newtype (QualifiedName a) _
 
 newtype Wrapped a = Wrapped
   { open :: SourceToken
