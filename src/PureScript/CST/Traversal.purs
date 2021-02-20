@@ -186,7 +186,7 @@ traverseModuleBody
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f ModuleBody
-traverseModuleBody k = Newtype.traverse ModuleBody (\b -> b { decls = _ } <$> traverse (traverseDecl k) b.decls)
+traverseModuleBody k = Newtype.traverse ModuleBody (\b -> b { decls = _ } <$> traverse k.onDecl b.decls)
 
 traverseDecl
   :: forall e f r
@@ -204,7 +204,7 @@ traverseDecl k = case _ of
   DeclSignature typ -> DeclSignature <$> traverseLabeled k.onType typ
   DeclValue fields -> DeclValue <$> traverseValueBindingFields k fields
   DeclForeign tok1 tok2 f -> DeclForeign tok1 tok2 <$> traverseForeign k f
-  decl -> k.onDecl decl
+  decl -> pure decl
 
 traverseForeign
   :: forall e f r
@@ -214,7 +214,7 @@ traverseForeign
 traverseForeign k = case _ of
   ForeignValue typ -> ForeignValue <$> traverseLabeled k.onType typ
   ForeignData tok typ -> ForeignData tok <$> traverseLabeled k.onType typ
-  ForeignKind tok name -> pure (ForeignKind tok name)
+  other@(ForeignKind _ _) -> pure other
 
 traverseInstance
   :: forall e f r
@@ -285,7 +285,7 @@ traverseType k = case _ of
   TypeConstrained typ1 tok typ2 -> TypeConstrained <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeParens wrapped -> TypeParens <$> traverseWrapped k.onType wrapped
   TypeUnaryRow tok typ -> TypeUnaryRow tok <$> k.onType typ
-  typ -> k.onType typ
+  typ -> pure typ
 
 traverseRow
   :: forall e f r
@@ -325,7 +325,7 @@ traverseExpr k = case _ of
   ExprLet letIn -> ExprLet <$> traverseLetIn k letIn
   ExprDo doBlock -> ExprDo <$> traverseDoBlock k doBlock
   ExprAdo adoBlock -> ExprAdo <$> traverseAdoBlock k adoBlock
-  expr -> k.onExpr expr
+  expr -> pure expr
 
 traverseDelimited
   :: forall f a
@@ -395,7 +395,7 @@ traverseLambda
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Lambda
-traverseLambda k l = l { binders = _, body = _ } <$> traverse (traverseBinder k) l.binders <*> k.onExpr l.body
+traverseLambda k l = l { binders = _, body = _ } <$> traverse k.onBinder l.binders <*> k.onExpr l.body
 
 traverseIfThenElse
   :: forall e f r
@@ -409,7 +409,7 @@ traverseCaseOf
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f CaseOf
-traverseCaseOf k r = r { head = _, branches = _ } <$> traverseSeparated k.onExpr r.head <*> traverse (bitraverse (traverseSeparated (traverseBinder k)) (traverseGuarded k)) r.branches
+traverseCaseOf k r = r { head = _, branches = _ } <$> traverseSeparated k.onExpr r.head <*> traverse (bitraverse (traverseSeparated k.onBinder) (traverseGuarded k)) r.branches
 
 traverseGuarded
   :: forall e f r
@@ -432,7 +432,7 @@ traversePatternGuard
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f PatternGuard
-traversePatternGuard k g = g { binder = _, expr = _ } <$> traverse (ltraverse (traverseBinder k)) g.binder <*> k.onExpr g.expr
+traversePatternGuard k g = g { binder = _, expr = _ } <$> traverse (ltraverse k.onBinder) g.binder <*> k.onExpr g.expr
 
 traverseWhere
   :: forall e f r
@@ -449,7 +449,7 @@ traverseLetBinding
 traverseLetBinding k = case _ of
   LetBindingSignature name -> LetBindingSignature <$> traverseLabeled k.onType name
   LetBindingName valueBinders -> LetBindingName <$> traverseValueBindingFields k valueBinders
-  LetBindingPattern binder tok w -> LetBindingPattern <$> traverseBinder k binder <@> tok <*> traverseWhere k w
+  LetBindingPattern binder tok w -> LetBindingPattern <$> k.onBinder binder <@> tok <*> traverseWhere k w
   LetBindingError e -> pure (LetBindingError e)
 
 traverseValueBindingFields
@@ -457,7 +457,7 @@ traverseValueBindingFields
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f ValueBindingFields
-traverseValueBindingFields k v = v { binders = _, guarded = _ } <$> traverse (traverseBinder k) v.binders <*> traverseGuarded k v.guarded
+traverseValueBindingFields k v = v { binders = _, guarded = _ } <$> traverse k.onBinder v.binders <*> traverseGuarded k v.guarded
 
 traverseLetIn
   :: forall e f r
@@ -474,7 +474,7 @@ traverseDoStatement
 traverseDoStatement k = case _ of
   DoLet tok letBindings -> DoLet tok <$> traverse (traverseLetBinding k) letBindings
   DoDiscard expr -> DoDiscard <$> k.onExpr expr
-  DoBind binder tok expr -> DoBind <$> traverseBinder k binder <@> tok <*> k.onExpr expr
+  DoBind binder tok expr -> DoBind <$> k.onBinder binder <@> tok <*> k.onExpr expr
   DoError e -> pure (DoError e)
 
 traverseDoBlock
@@ -497,14 +497,14 @@ traverseBinder
   => { | OnBinder (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Binder
 traverseBinder k = case _ of
-  BinderNamed name tok binder -> BinderNamed name tok <$> traverseBinder k binder
-  BinderConstructor name binders -> BinderConstructor name <$> traverse (traverseBinder k) binders
-  BinderArray binders -> BinderArray <$> traverseDelimited (traverseBinder k) binders
-  BinderRecord binders -> BinderRecord <$> traverseDelimited (traverseRecordLabeled (traverseBinder k)) binders
-  BinderParens binder -> BinderParens <$> traverseWrapped (traverseBinder k) binder
-  BinderTyped binder tok typ -> BinderTyped <$> traverseBinder k binder <@> tok <*> k.onType typ
-  BinderOp binder ops -> BinderOp <$> traverseBinder k binder <*> traverse (traverse (traverseBinder k)) ops
-  binder -> k.onBinder binder
+  BinderNamed name tok binder -> BinderNamed name tok <$> k.onBinder binder
+  BinderConstructor name binders -> BinderConstructor name <$> traverse k.onBinder binders
+  BinderArray binders -> BinderArray <$> traverseDelimited k.onBinder binders
+  BinderRecord binders -> BinderRecord <$> traverseDelimited (traverseRecordLabeled k.onBinder) binders
+  BinderParens binder -> BinderParens <$> traverseWrapped k.onBinder binder
+  BinderTyped binder tok typ -> BinderTyped <$> k.onBinder binder <@> tok <*> k.onType typ
+  BinderOp binder ops -> BinderOp <$> k.onBinder binder <*> traverse (traverse k.onBinder) ops
+  binder -> pure binder
 
 bottomUpTraversal
   :: forall m e
