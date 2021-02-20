@@ -35,13 +35,15 @@ case for `onExpr`.
 
 ```purescript
 import Data.Set (Set, singleton)
+import Data.Tuple (Tuple(..))
 import PureScript.CST.Traversal (foldMapModule, defaultMonoidalVisitor)
-import PureScript.CST.Types (Expr(..), Ident, Module)
+import PureScript.CST.Types (Expr(..), Ident, Module, ModuleName, QualifiedName(..))
 
-getExprIdents :: forall a. Module a -> Set Ident
+getExprIdents :: forall a. Module a -> Set (Tuple (Maybe ModuleName) Ident)
 getExprIdents = foldMapModule $ defaultMonoidalVisitor
   { onExpr = case _ of
-      ExprIdent ident -> singleton ident
+      ExprIdent (QualifiedName ident) ->
+        singleton (Tuple ident.module ident.name)
       _ -> mempty
   }
 ```
