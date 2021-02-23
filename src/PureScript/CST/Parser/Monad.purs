@@ -33,7 +33,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Comment, LineFeed, SourcePos, SourceToken)
+import PureScript.CST.Types (Comment, LineFeed, SourceToken, SourcePos)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data UnsafeBoundValue :: Type
@@ -121,7 +121,7 @@ foldArray = mkFold
 
 data Parser a
   = Take (SourceToken -> Either ParseError a)
-  | Eof (Array (Comment LineFeed) -> a)
+  | Eof (Tuple SourcePos (Array (Comment LineFeed)) -> a)
   | Fail SourcePos ParseError
   | Alt (Parser a) (Parser a)
   | Try (Parser a)
@@ -184,7 +184,7 @@ many = iter foldArray
 optional :: forall a. Parser a -> Parser (Maybe a)
 optional = iter foldMaybe
 
-eof :: Parser (Array (Comment LineFeed))
+eof :: Parser (Tuple SourcePos (Array (Comment LineFeed)))
 eof = Eof identity
 
 recover :: forall a. (PositionedError -> TokenStream -> Recovery a) -> Parser a -> Parser a
@@ -289,7 +289,7 @@ runParser' = \state parser ->
         TokenError errPos err errStream _ ->
           ParseFail err errPos state errStream
         TokenEOF eofPos comments ->
-          go stack (state { consumed = true, position = eofPos }) (Pure (k comments))
+          go stack (state { consumed = true, position = eofPos }) (Pure (k (Tuple eofPos comments)))
         TokenCons tok _ _ _ ->
           go stack state (Fail tok.range.start (ExpectedEof tok.value))
     Iter f p -> do

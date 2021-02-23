@@ -1,6 +1,5 @@
 module PureScript.CST.Parser
-  ( RecoveredError
-  , Recovered
+  ( Recovered
   , parseModule
   , parseModuleHeader
   , parseModuleBody
@@ -23,18 +22,12 @@ import Data.Maybe (Maybe(..), maybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
-import PureScript.CST.Errors (ParseError(..))
+import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
 import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourcePos, SourceToken, Token(..), Type(..), TypeVarBinding(..), Where, Wrapped(..))
-
-type RecoveredError =
-  { error :: ParseError
-  , position :: SourcePos
-  , tokens :: Array SourceToken
-  }
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
 type Recovered f = f RecoveredError
 
@@ -128,8 +121,8 @@ parseModuleHeader = do
 parseModuleBody :: Parser (Recovered ModuleBody)
 parseModuleBody = do
   decls <- parseModuleDecls <* tokLayoutEnd
-  trailingComments <- eof
-  pure $ ModuleBody { decls, trailingComments }
+  Tuple end trailingComments <- eof
+  pure $ ModuleBody { decls, trailingComments, end }
 
 parseModuleImportDecls :: Parser (Array (Recovered ImportDecl))
 parseModuleImportDecls = many (parseImportDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
@@ -799,10 +792,10 @@ parseGuarded sepParser =
       <*> parseExpr
 
 parseWhere :: Parser (Recovered Where)
-parseWhere = defer \_ ->
-  { expr: _, bindings: _ }
-    <$> parseExpr
-    <*> optional (Tuple <$> tokKeyword "where" <*> layoutNonEmpty (recoverLetBinding parseLetBinding))
+parseWhere = defer \_ -> do
+  expr <- parseExpr
+  bindings <- optional (Tuple <$> tokKeyword "where" <*> layoutNonEmpty (recoverLetBinding parseLetBinding))
+  pure $ Where { expr, bindings }
 
 parseBinder :: Parser (Recovered Binder)
 parseBinder = defer \_ -> do
@@ -1144,7 +1137,7 @@ reservedKeywords = Set.fromFoldable
 
 recoverIndent :: forall a. (RecoveredError -> a) -> Parser a -> Parser a
 recoverIndent mkNode = recover \{ position, error } ->
-  map (\tokens -> mkNode { position, error, tokens }) <<< recoverTokensWhile \tok indent ->
+  map (\tokens -> mkNode (RecoveredError { position, error, tokens })) <<< recoverTokensWhile \tok indent ->
     case tok.value of
       TokLayoutEnd col -> col > indent
       TokLayoutSep col -> col > indent

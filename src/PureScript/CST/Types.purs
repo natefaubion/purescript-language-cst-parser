@@ -199,6 +199,7 @@ newtype ModuleHeader e = ModuleHeader
 newtype ModuleBody e = ModuleBody
   { decls :: Array (Declaration e)
   , trailingComments :: Array (Comment LineFeed)
+  , end :: SourcePos
   }
 
 derive instance newtypeModuleBody :: Newtype (ModuleBody e) _
@@ -411,10 +412,12 @@ type LetIn e =
   , body :: Expr e
   }
 
-type Where e =
+newtype Where e = Where
   { expr :: Expr e
   , bindings :: Maybe (Tuple SourceToken (NonEmptyArray (LetBinding e)))
   }
+
+derive instance newtypeWhere :: Newtype (Where e) _
 
 data LetBinding e
   = LetBindingSignature (Labeled (Name Ident) (Type e))
