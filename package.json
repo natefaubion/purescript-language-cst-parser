@@ -1,7 +1,8 @@
 {
   "private": true,
   "scripts": {
-    "parse-package-set": "spago -x integration.dhall run"
+    "parse-package-set": "spago -x integration.dhall run",
+    "bench-file": "spago -x bench.dhall build && node --expose-gc -e \"require('./output/BenchFile/index.js').main()\""
   },
   "devDependencies": {
     "purescript": "^0.13.8",
