@@ -90,7 +90,7 @@ printTokenWithOption option = case _ of
   TokOperator moduleName name ->
     printQualified moduleName name
   TokSymbolName moduleName name ->
-    printQualified moduleName name
+    printQualified moduleName ("(" <> name <> ")")
   TokSymbolArrow style ->
     case style of
       ASCII -> "(->)"
