@@ -27,7 +27,7 @@ type SourceRange =
 data Comment l
   = Comment String
   | Space Int
-  | Line l
+  | Line l Int
 
 data LineFeed
   = LF
