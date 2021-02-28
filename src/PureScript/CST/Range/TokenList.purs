@@ -86,7 +86,7 @@ uncons' done more = case _ of
   TokenArray ix1 ix2 arr -> do
     let
       next
-        | ix1 + 1 == ix2 = TokenEmpty
+        | ix1 == ix2 = TokenEmpty
         | otherwise = TokenArray (ix1 + 1) ix2 arr
     more (unsafePartial (unsafeIndex arr ix1)) next
 
@@ -100,7 +100,7 @@ uncons2 done more l r = case l of
   TokenArray ix1 ix2 arr ->  do
     let
       next
-        | ix1 + 1 == ix2 = r
+        | ix1 == ix2 = r
         | otherwise = TokenArray (ix1 + 1) ix2 arr <> r
     more (unsafePartial (unsafeIndex arr ix1)) next
 
