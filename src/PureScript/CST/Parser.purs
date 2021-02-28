@@ -27,7 +27,7 @@ import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor, DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr, Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard, Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
 type Recovered f = f RecoveredError
 
@@ -194,10 +194,10 @@ parseDeclData1 keyword name = do
   pure $ DeclData { keyword, name, vars } ctors
 
 parseDataCtor :: Parser (Recovered DataCtor)
-parseDataCtor =
-  { name: _, fields: _ }
-    <$> parseProper
-    <*> many parseTypeAtom
+parseDataCtor = ado
+  name <- parseProper
+  fields <- many parseTypeAtom
+  in DataCtor { name, fields }
 
 parseDeclNewtype :: Parser (Recovered Declaration)
 parseDeclNewtype = do
@@ -778,18 +778,18 @@ parseGuarded sepParser =
     <|> Guarded <$> many1 parseGuardedExpr
   where
   parseGuardedExpr :: Parser (Recovered GuardedExpr)
-  parseGuardedExpr =
-    { bar: _, patterns: _, separator: _, where: _ }
-      <$> tokPipe
-      <*> separated tokComma parsePatternGuard
-      <*> sepParser
-      <*> parseWhere
+  parseGuardedExpr = ado
+    bar <- tokPipe
+    patterns <- separated tokComma parsePatternGuard
+    separator <- sepParser
+    where_ <- parseWhere
+    in GuardedExpr { bar, patterns, separator, where: where_ }
 
   parsePatternGuard :: Parser (Recovered PatternGuard)
-  parsePatternGuard =
-    { binder: _, expr: _ }
-      <$> optional (try (Tuple <$> parseBinder <*> tokLeftArrow))
-      <*> parseExpr
+  parsePatternGuard = ado
+    binder <- optional (try (Tuple <$> parseBinder <*> tokLeftArrow))
+    expr <- parseExpr
+    in PatternGuard { binder, expr }
 
 parseWhere :: Parser (Recovered Where)
 parseWhere = defer \_ -> do

@@ -266,7 +266,7 @@ type DataHead e =
   , vars :: Array (TypeVarBinding e)
   }
 
-type DataCtor e =
+newtype DataCtor e = DataCtor
   { name :: Name Proper
   , fields :: Array (Type e)
   }
@@ -317,14 +317,14 @@ data Guarded e
   = Unconditional SourceToken (Where e)
   | Guarded (NonEmptyArray (GuardedExpr e))
 
-type GuardedExpr e =
+newtype GuardedExpr e = GuardedExpr
   { bar :: SourceToken
   , patterns :: Separated (PatternGuard e)
   , separator :: SourceToken
   , where :: Where e
   }
 
-type PatternGuard e =
+newtype PatternGuard e = PatternGuard
   { binder :: Maybe (Tuple (Binder e) SourceToken)
   , expr :: Expr e
   }
