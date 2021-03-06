@@ -108,20 +108,20 @@ import Data.Identity (Identity(..))
 import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), curry, uncurry)
-import Prim as Prim
+import Prim as P
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor(..), DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr(..), IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard(..), RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where(..), Wrapped(..))
 import Type.Row (type (+))
 
-type Rewrite e f (g :: Prim.Type -> Prim.Type) = g e -> f (g e)
-type RewriteWithContext c e f (g :: Prim.Type -> Prim.Type) = c -> g e -> f (Tuple c (g e))
-type MonoidalRewrite e m (g :: Prim.Type -> Prim.Type) = g e -> m
-type PureRewrite e (g :: Prim.Type -> Prim.Type) = g e -> g e
-type PureRewriteWithContext c e (g :: Prim.Type -> Prim.Type) = c -> g e -> Tuple c (g e)
+type Rewrite e f (g :: P.Type -> P.Type) = g e -> f (g e)
+type RewriteWithContext c e f (g :: P.Type -> P.Type) = c -> g e -> f (Tuple c (g e))
+type MonoidalRewrite e m (g :: P.Type -> P.Type) = g e -> m
+type PureRewrite e (g :: P.Type -> P.Type) = g e -> g e
+type PureRewriteWithContext c e (g :: P.Type -> P.Type) = c -> g e -> Tuple c (g e)
 
-type OnBinder (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onBinder :: t Binder | r)
-type OnDecl (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onDecl :: t Declaration | r)
-type OnExpr (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onExpr :: t Expr | r)
-type OnType (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onType :: t Type | r)
+type OnBinder (t :: (P.Type -> P.Type) -> P.Type) r = (onBinder :: t Binder | r)
+type OnDecl (t :: (P.Type -> P.Type) -> P.Type) r = (onDecl :: t Declaration | r)
+type OnExpr (t :: (P.Type -> P.Type) -> P.Type) r = (onExpr :: t Expr | r)
+type OnType (t :: (P.Type -> P.Type) -> P.Type) r = (onType :: t Type | r)
 
 type OnPureScript t =
   ( OnBinder t
