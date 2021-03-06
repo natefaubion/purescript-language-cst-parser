@@ -7,6 +7,7 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple)
+import Prim hiding (Type, Row)
 
 newtype ModuleName = ModuleName String
 

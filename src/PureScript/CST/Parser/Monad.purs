@@ -110,7 +110,7 @@ foldMaybe = mkFold
 foldArray :: forall a. Fold a (Array a)
 foldArray = mkFold
   { init: \_ ->
-      unsafePerformEffect $ liftST STArray.empty
+      unsafePerformEffect $ liftST STArray.new
   , step: \arr a ->
       unsafePerformEffect $ liftST do
         _ <- STArray.push a arr

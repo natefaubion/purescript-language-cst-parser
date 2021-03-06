@@ -18,6 +18,7 @@ import Data.Either (Either(..))
 import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Prim hiding (Type)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered, parseModuleBody, parseModuleHeader)
 import PureScript.CST.Parser as Parser

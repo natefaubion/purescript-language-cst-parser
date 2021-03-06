@@ -109,7 +109,7 @@ toUnfoldable = unfoldr (uncons' Nothing (\a b -> Just (Tuple a b)))
 
 toArray :: TokenList -> Array SourceToken
 toArray init = ST.run do
-  arr <- STArray.empty
+  arr <- STArray.new
   cur <- STRef.new init
   continue <- STRef.new true
   ST.while (STRef.read continue) do

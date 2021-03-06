@@ -22,6 +22,8 @@ import Data.Maybe (Maybe(..), maybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
+import Prim as Prim
+import Prim hiding (Type, Row)
 import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
 import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
@@ -29,6 +31,7 @@ import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
+type Recovered :: forall k. (Prim.Type -> k) -> k
 type Recovered f = f RecoveredError
 
 type RecoveryStrategy f = Parser (Recovered f) -> Parser (Recovered f)

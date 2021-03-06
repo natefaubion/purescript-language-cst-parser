@@ -8,12 +8,13 @@ module PureScript.CST.Range
 import Prelude
 
 import Control.Lazy (defer)
-import Data.Array (foldMap)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Foldable(foldMap)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple(..), fst, snd)
+import Prim (Array)
 import PureScript.CST.Errors (RecoveredError(..))
 import PureScript.CST.Range.TokenList (TokenList, cons, singleton)
 import PureScript.CST.Range.TokenList as TokenList

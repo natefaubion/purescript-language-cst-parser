@@ -106,22 +106,22 @@ import Data.Const (Const(..))
 import Data.Functor.Compose (Compose(..))
 import Data.Identity (Identity(..))
 import Data.Newtype (un)
-import Data.Newtype as Newtype
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), curry, uncurry)
+import Prim as Prim
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor(..), DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr(..), IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard(..), RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where(..), Wrapped(..))
 import Type.Row (type (+))
 
-type Rewrite e f g = g e -> f (g e)
-type RewriteWithContext c e f g = c -> g e -> f (Tuple c (g e))
-type MonoidalRewrite e m g = g e -> m
-type PureRewrite e g = g e -> g e
-type PureRewriteWithContext c e g = c -> g e -> Tuple c (g e)
+type Rewrite e f (g :: Prim.Type -> Prim.Type) = g e -> f (g e)
+type RewriteWithContext c e f (g :: Prim.Type -> Prim.Type) = c -> g e -> f (Tuple c (g e))
+type MonoidalRewrite e m (g :: Prim.Type -> Prim.Type) = g e -> m
+type PureRewrite e (g :: Prim.Type -> Prim.Type) = g e -> g e
+type PureRewriteWithContext c e (g :: Prim.Type -> Prim.Type) = c -> g e -> Tuple c (g e)
 
-type OnBinder t r = (onBinder :: t Binder | r)
-type OnDecl t r = (onDecl :: t Declaration | r)
-type OnExpr t r = (onExpr :: t Expr | r)
-type OnType t r = (onType :: t Type | r)
+type OnBinder (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onBinder :: t Binder | r)
+type OnDecl (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onDecl :: t Declaration | r)
+type OnExpr (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onExpr :: t Expr | r)
+type OnType (t :: (Prim.Type -> Prim.Type) -> Prim.Type) r = (onType :: t Type | r)
 
 type OnPureScript t =
   ( OnBinder t
@@ -186,7 +186,8 @@ traverseModuleBody
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f ModuleBody
-traverseModuleBody k = Newtype.traverse ModuleBody (\b -> b { decls = _ } <$> traverse k.onDecl b.decls)
+traverseModuleBody k (ModuleBody b) =
+  ModuleBody <<< b { decls = _ } <$> traverse k.onDecl b.decls
 
 traverseDecl
   :: forall e f r
@@ -221,14 +222,20 @@ traverseInstance
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Instance
-traverseInstance k = Newtype.traverse Instance (\i -> i { head = _, body = _ } <$> traverseInstanceHead k i.head <*> traverse (traverse (traverse (traverseInstanceBinding k))) i.body)
+traverseInstance k (Instance i) =
+  map Instance $ i { head = _, body = _ }
+    <$> traverseInstanceHead k i.head
+    <*> traverse (traverse (traverse (traverseInstanceBinding k))) i.body
 
 traverseInstanceHead
   :: forall e f r
    . Applicative f
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f InstanceHead
-traverseInstanceHead k head = head { constraints = _, types = _ } <$> traverse (ltraverse (traverseOneOrDelimited k.onType)) head.constraints <*> traverse k.onType head.types
+traverseInstanceHead k head =
+  head { constraints = _, types = _ }
+    <$> traverse (ltraverse (traverseOneOrDelimited k.onType)) head.constraints
+    <*> traverse k.onType head.types
 
 traverseInstanceBinding
   :: forall e f r
@@ -292,7 +299,10 @@ traverseRow
    . Applicative f
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f Row
-traverseRow k = Newtype.traverse Row (\r -> r { labels = _, tail = _ } <$> traverse (traverseSeparated (traverseLabeled k.onType)) r.labels <*> traverse (traverse k.onType) r.tail)
+traverseRow k (Row r) =
+  map Row $ r { labels = _, tail = _ }
+    <$> traverse (traverseSeparated (traverseLabeled k.onType)) r.labels
+    <*> traverse (traverse k.onType) r.tail
 
 traverseTypeVarBinding
   :: forall e f r
@@ -356,7 +366,7 @@ traverseWrapped
   . Applicative f
  => (a -> f a)
  -> Rewrite a f Wrapped
-traverseWrapped k = Newtype.traverse Wrapped (\w -> w { value = _ } <$> k w.value)
+traverseWrapped k (Wrapped w) = Wrapped <<< w { value = _ } <$> k w.value
 
 traverseRecordLabeled
   :: forall f a
@@ -372,7 +382,7 @@ traverseLabeled
    . Applicative f
   => (b -> f b)
   -> Rewrite b f (Labeled a)
-traverseLabeled k = Newtype.traverse Labeled (\l -> l { value = _ } <$> k l.value)
+traverseLabeled k (Labeled l) = Labeled <<< l { value = _ } <$> k l.value
 
 traverseRecordAccessor
   :: forall e f r
