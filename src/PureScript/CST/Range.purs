@@ -11,7 +11,7 @@ import Control.Lazy (defer)
 import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Foldable(foldMap)
+import Data.Foldable (foldMap)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple(..), fst, snd)
 import Prim (Array)
