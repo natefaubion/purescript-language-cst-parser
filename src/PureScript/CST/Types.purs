@@ -27,7 +27,7 @@ type SourceRange =
 data Comment l
   = Comment String
   | Space Int
-  | Line l
+  | Line l Int
 
 data LineFeed
   = LF
@@ -199,6 +199,7 @@ newtype ModuleHeader e = ModuleHeader
 newtype ModuleBody e = ModuleBody
   { decls :: Array (Declaration e)
   , trailingComments :: Array (Comment LineFeed)
+  , end :: SourcePos
   }
 
 derive instance newtypeModuleBody :: Newtype (ModuleBody e) _
@@ -265,7 +266,7 @@ type DataHead e =
   , vars :: Array (TypeVarBinding e)
   }
 
-type DataCtor e =
+newtype DataCtor e = DataCtor
   { name :: Name Proper
   , fields :: Array (Type e)
   }
@@ -316,14 +317,14 @@ data Guarded e
   = Unconditional SourceToken (Where e)
   | Guarded (NonEmptyArray (GuardedExpr e))
 
-type GuardedExpr e =
+newtype GuardedExpr e = GuardedExpr
   { bar :: SourceToken
   , patterns :: Separated (PatternGuard e)
   , separator :: SourceToken
   , where :: Where e
   }
 
-type PatternGuard e =
+newtype PatternGuard e = PatternGuard
   { binder :: Maybe (Tuple (Binder e) SourceToken)
   , expr :: Expr e
   }
@@ -411,10 +412,12 @@ type LetIn e =
   , body :: Expr e
   }
 
-type Where e =
+newtype Where e = Where
   { expr :: Expr e
   , bindings :: Maybe (Tuple SourceToken (NonEmptyArray (LetBinding e)))
   }
+
+derive instance newtypeWhere :: Newtype (Where e) _
 
 data LetBinding e
   = LetBindingSignature (Labeled (Name Ident) (Type e))

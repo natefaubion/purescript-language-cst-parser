@@ -333,8 +333,8 @@ bumpComment pos@{ line, column } = case _ of
     bumpText pos 0 str
   Space n ->
     { line, column: column + n }
-  Line _ ->
-    { line: line + 1, column: 0 }
+  Line _ n ->
+    { line: line + n, column: 0 }
 
 qualLength :: Maybe ModuleName -> Int
 qualLength = maybe 0 (add 1 <<< String.length <<< unwrap)
@@ -343,7 +343,7 @@ leadingComments :: Lex LexError (Array (Comment LineFeed))
 leadingComments = many do
   Comment <$> comment
     <|> Space <$> spaceComment
-    <|> Line <$> lineComment
+    <|> lineComment
 
 trailingComments :: Lex LexError (Array (Comment Void))
 trailingComments = many do
@@ -358,10 +358,10 @@ comment =
 spaceComment :: Lex LexError Int
 spaceComment = SCU.length <$> regex (LexExpected "spaces") " +"
 
-lineComment :: Lex LexError LineFeed
+lineComment :: Lex LexError (Comment LineFeed)
 lineComment =
-  string' (LexExpected "newline") LF "\n"
-    <|> string' (LexExpected "newline") CRLF "\r\n"
+  (Line LF <<< String.length) <$> regex (LexExpected "newline") "\n+"
+    <|> (Line CRLF <<< (_ / 2) <<< String.length) <$> regex (LexExpected "newline") "(?:\r\n)+"
 
 token :: Lex LexError Token
 token =

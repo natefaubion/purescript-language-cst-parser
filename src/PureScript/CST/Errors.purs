@@ -1,5 +1,6 @@
 module PureScript.CST.Errors
-  ( ParseError(..)
+  ( RecoveredError(..)
+  , ParseError(..)
   , printParseError
   , printTokenError
   ) where
@@ -7,7 +8,13 @@ module PureScript.CST.Errors
 import Prelude
 
 import PureScript.CST.Print (printQualified)
-import PureScript.CST.Types (SourceStyle(..), Token(..))
+import PureScript.CST.Types (SourcePos, SourceStyle(..), Token(..), SourceToken)
+
+newtype RecoveredError = RecoveredError
+  { error :: ParseError
+  , position :: SourcePos
+  , tokens :: Array SourceToken
+  }
 
 data ParseError
   = UnexpectedEof

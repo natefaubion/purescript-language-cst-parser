@@ -109,7 +109,7 @@ import Data.Newtype (un)
 import Data.Newtype as Newtype
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), curry, uncurry)
-import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor, DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr, IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard, RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where, Wrapped(..))
+import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor(..), DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr(..), IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard(..), RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where(..), Wrapped(..))
 import Type.Row (type (+))
 
 type Rewrite e f g = g e -> f (g e)
@@ -267,7 +267,7 @@ traverseDataCtor
    . Applicative f
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f DataCtor
-traverseDataCtor k ctor = ctor { fields = _ } <$> traverse k.onType ctor.fields
+traverseDataCtor k (DataCtor ctor) = DataCtor <<< ctor { fields = _ } <$> traverse k.onType ctor.fields
 
 traverseType
   :: forall e f r
@@ -425,21 +425,21 @@ traverseGuardedExpr
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f GuardedExpr
-traverseGuardedExpr k g = g { patterns = _, where = _ } <$> traverseSeparated (traversePatternGuard k) g.patterns <*> traverseWhere k g.where
+traverseGuardedExpr k (GuardedExpr g) = (\ps wh -> GuardedExpr g { patterns = ps, where = wh }) <$> traverseSeparated (traversePatternGuard k) g.patterns <*> traverseWhere k g.where
 
 traversePatternGuard
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f PatternGuard
-traversePatternGuard k g = g { binder = _, expr = _ } <$> traverse (ltraverse k.onBinder) g.binder <*> k.onExpr g.expr
+traversePatternGuard k (PatternGuard g) = (\binder expr -> PatternGuard { binder, expr }) <$> traverse (ltraverse k.onBinder) g.binder <*> k.onExpr g.expr
 
 traverseWhere
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Where
-traverseWhere k w = w { expr = _, bindings = _ } <$> k.onExpr w.expr <*> traverse (traverse (traverse (traverseLetBinding k))) w.bindings
+traverseWhere k (Where w) = (\expr bindings -> Where { expr, bindings }) <$> k.onExpr w.expr <*> traverse (traverse (traverse (traverseLetBinding k))) w.bindings
 
 traverseLetBinding
   :: forall e f r

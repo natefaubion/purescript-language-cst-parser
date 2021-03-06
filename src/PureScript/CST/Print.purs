@@ -90,7 +90,7 @@ printTokenWithOption option = case _ of
   TokOperator moduleName name ->
     printQualified moduleName name
   TokSymbolName moduleName name ->
-    printQualified moduleName name
+    printQualified moduleName ("(" <> name <> ")")
   TokSymbolArrow style ->
     case style of
       ASCII -> "(->)"
@@ -129,7 +129,7 @@ printComment :: forall l. (l -> String) -> Comment l -> String
 printComment k = case _ of
   Comment str -> str
   Space n -> power " " n
-  Line l -> k l
+  Line l n -> power (k l) n
 
 printLineFeed :: LineFeed -> String
 printLineFeed = case _ of
