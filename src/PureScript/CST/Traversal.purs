@@ -176,10 +176,9 @@ traverseModule
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Module
-traverseModule k (Module mod) = Module <<<
-  { header: mod.header
-  , body: _
-  } <$> traverseModuleBody k mod.body
+traverseModule k (Module mod) =
+  (\body -> Module mod { header = mod.header, body = body })
+    <$> traverseModuleBody k mod.body
 
 traverseModuleBody
   :: forall e f r
@@ -187,7 +186,8 @@ traverseModuleBody
   => { | OnBinder (Rewrite e f) + OnDecl (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f ModuleBody
 traverseModuleBody k (ModuleBody b) =
-  ModuleBody <<< b { decls = _ } <$> traverse k.onDecl b.decls
+  (\decls -> ModuleBody b { decls = decls })
+    <$> traverse k.onDecl b.decls
 
 traverseDecl
   :: forall e f r
@@ -223,7 +223,7 @@ traverseInstance
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Instance
 traverseInstance k (Instance i) =
-  map Instance $ i { head = _, body = _ }
+  (\head body -> Instance i { head = head, body = body })
     <$> traverseInstanceHead k i.head
     <*> traverse (traverse (traverse (traverseInstanceBinding k))) i.body
 
@@ -251,7 +251,10 @@ traverseClassHead
    . Applicative f
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f ClassHead
-traverseClassHead k head = head { super = _, vars = _ } <$> traverse (ltraverse (traverseOneOrDelimited k.onType)) head.super <*> traverse (traverseTypeVarBinding k) head.vars
+traverseClassHead k head =
+  head { super = _, vars = _ }
+    <$> traverse (ltraverse (traverseOneOrDelimited k.onType)) head.super
+    <*> traverse (traverseTypeVarBinding k) head.vars
 
 traverseOneOrDelimited
   :: forall a f
@@ -267,14 +270,18 @@ traverseDataHead
    . Applicative f
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f DataHead
-traverseDataHead k head = head { vars = _ } <$> traverse (traverseTypeVarBinding k) head.vars
+traverseDataHead k head =
+  head { vars = _ }
+    <$> traverse (traverseTypeVarBinding k) head.vars
 
 traverseDataCtor
   :: forall e f r
    . Applicative f
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f DataCtor
-traverseDataCtor k (DataCtor ctor) = DataCtor <<< ctor { fields = _ } <$> traverse k.onType ctor.fields
+traverseDataCtor k (DataCtor ctor) =
+  (\fields -> DataCtor ctor { fields = fields })
+    <$> traverse k.onType ctor.fields
 
 traverseType
   :: forall e f r
@@ -300,7 +307,7 @@ traverseRow
   => { | OnType (Rewrite e f) + r }
   -> Rewrite e f Row
 traverseRow k (Row r) =
-  map Row $ r { labels = _, tail = _ }
+  (\labels tail -> Row r { labels = labels, tail = tail })
     <$> traverse (traverseSeparated (traverseLabeled k.onType)) r.labels
     <*> traverse (traverse k.onType) r.tail
 
@@ -366,7 +373,8 @@ traverseWrapped
   . Applicative f
  => (a -> f a)
  -> Rewrite a f Wrapped
-traverseWrapped k (Wrapped w) = Wrapped <<< w { value = _ } <$> k w.value
+traverseWrapped k (Wrapped w) =
+  (\value -> Wrapped w { value = value }) <$> k w.value
 
 traverseRecordLabeled
   :: forall f a
@@ -382,14 +390,16 @@ traverseLabeled
    . Applicative f
   => (b -> f b)
   -> Rewrite b f (Labeled a)
-traverseLabeled k (Labeled l) = Labeled <<< l { value = _ } <$> k l.value
+traverseLabeled k (Labeled l) =
+  (\value -> Labeled l { value = value }) <$> k l.value
 
 traverseRecordAccessor
   :: forall e f r
    . Applicative f
   => { | OnExpr (Rewrite e f) + r }
   -> Rewrite e f RecordAccessor
-traverseRecordAccessor k r = r { expr = _ } <$> k.onExpr r.expr
+traverseRecordAccessor k r =
+  r { expr = _ } <$> k.onExpr r.expr
 
 traverseRecordUpdate
   :: forall e f r
@@ -405,21 +415,31 @@ traverseLambda
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Lambda
-traverseLambda k l = l { binders = _, body = _ } <$> traverse k.onBinder l.binders <*> k.onExpr l.body
+traverseLambda k l =
+  l { binders = _, body = _ }
+    <$> traverse k.onBinder l.binders
+    <*> k.onExpr l.body
 
 traverseIfThenElse
   :: forall e f r
    . Applicative f
   => { | OnExpr (Rewrite e f) + r }
   -> Rewrite e f IfThenElse
-traverseIfThenElse k r = r { cond = _, true = _, false = _ } <$> k.onExpr r.cond <*> k.onExpr r.true <*> k.onExpr r.false
+traverseIfThenElse k r =
+  r { cond = _, true = _, false = _ }
+    <$> k.onExpr r.cond
+    <*> k.onExpr r.true
+    <*> k.onExpr r.false
 
 traverseCaseOf
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f CaseOf
-traverseCaseOf k r = r { head = _, branches = _ } <$> traverseSeparated k.onExpr r.head <*> traverse (bitraverse (traverseSeparated k.onBinder) (traverseGuarded k)) r.branches
+traverseCaseOf k r =
+  r { head = _, branches = _ }
+    <$> traverseSeparated k.onExpr r.head
+    <*> traverse (bitraverse (traverseSeparated k.onBinder) (traverseGuarded k)) r.branches
 
 traverseGuarded
   :: forall e f r
@@ -435,21 +455,30 @@ traverseGuardedExpr
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f GuardedExpr
-traverseGuardedExpr k (GuardedExpr g) = (\ps wh -> GuardedExpr g { patterns = ps, where = wh }) <$> traverseSeparated (traversePatternGuard k) g.patterns <*> traverseWhere k g.where
+traverseGuardedExpr k (GuardedExpr g) =
+  (\ps wh -> GuardedExpr g { patterns = ps, where = wh })
+    <$> traverseSeparated (traversePatternGuard k) g.patterns
+    <*> traverseWhere k g.where
 
 traversePatternGuard
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f PatternGuard
-traversePatternGuard k (PatternGuard g) = (\binder expr -> PatternGuard { binder, expr }) <$> traverse (ltraverse k.onBinder) g.binder <*> k.onExpr g.expr
+traversePatternGuard k (PatternGuard g) =
+  (\binder expr -> PatternGuard { binder, expr })
+    <$> traverse (ltraverse k.onBinder) g.binder
+    <*> k.onExpr g.expr
 
 traverseWhere
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f Where
-traverseWhere k (Where w) = (\expr bindings -> Where { expr, bindings }) <$> k.onExpr w.expr <*> traverse (traverse (traverse (traverseLetBinding k))) w.bindings
+traverseWhere k (Where w) =
+  (\expr bindings -> Where { expr, bindings })
+    <$> k.onExpr w.expr
+    <*> traverse (traverse (traverse (traverseLetBinding k))) w.bindings
 
 traverseLetBinding
   :: forall e f r
@@ -467,14 +496,20 @@ traverseValueBindingFields
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f ValueBindingFields
-traverseValueBindingFields k v = v { binders = _, guarded = _ } <$> traverse k.onBinder v.binders <*> traverseGuarded k v.guarded
+traverseValueBindingFields k v =
+  v { binders = _, guarded = _ }
+    <$> traverse k.onBinder v.binders
+    <*> traverseGuarded k v.guarded
 
 traverseLetIn
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f LetIn
-traverseLetIn k l = l { bindings = _, body = _ } <$> traverse (traverseLetBinding k) l.bindings <*> k.onExpr l.body
+traverseLetIn k l =
+  l { bindings = _, body = _ }
+    <$> traverse (traverseLetBinding k) l.bindings
+    <*> k.onExpr l.body
 
 traverseDoStatement
   :: forall e f r
@@ -492,14 +527,19 @@ traverseDoBlock
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f DoBlock
-traverseDoBlock k d = d { statements = _ } <$> traverse (traverseDoStatement k) d.statements
+traverseDoBlock k d =
+  d { statements = _ }
+    <$> traverse (traverseDoStatement k) d.statements
 
 traverseAdoBlock
   :: forall e f r
    . Applicative f
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f AdoBlock
-traverseAdoBlock k a = a { statements = _, result = _ } <$> traverse (traverseDoStatement k) a.statements <*> k.onExpr a.result
+traverseAdoBlock k a =
+  a { statements = _, result = _ }
+    <$> traverse (traverseDoStatement k) a.statements
+    <*> k.onExpr a.result
 
 traverseBinder
   :: forall e f r
