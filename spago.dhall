@@ -13,7 +13,6 @@
   , "maybe"
   , "numbers"
   , "psci-support"
-  , "safe-coerce"
   , "strings"
   , "transformers"
   , "tuples"

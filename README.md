@@ -41,12 +41,12 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Traversal (foldMapModule, defaultMonoidalVisitor)
-import PureScript.CST.Types (Expr(..), Ident, Module, ModuleName, QualifiedName(..), SourceRange)
+import PureScript.CST.Types (Ident, ModuleName, PSExpr(..), PSModule, QualifiedName(..), SourceRange)
 
 type QualifiedIdent = Tuple (Maybe ModuleName) Ident
 type UsageMap = SemigroupMap QualifiedIdent (Set SourceRange)
 
-getExprIdents :: forall a. Module a -> UsageMap
+getExprIdents :: forall a. PSModule a -> UsageMap
 getExprIdents = foldMapModule $ defaultMonoidalVisitor
   { onExpr = case _ of
       ExprIdent (QualifiedName ident) ->
@@ -65,4 +65,10 @@ slowest parse times along with the mean parse time for the set.
 
 ```sh
 npm run parse-package-set
+```
+
+You can also benchmark a single file:
+
+```sh
+npm run bench-file MyModule.purs
 ```
