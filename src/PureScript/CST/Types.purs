@@ -7,7 +7,6 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple)
-import Prim hiding (Type, Row)
 
 newtype ModuleName = ModuleName String
 
@@ -153,38 +152,38 @@ data OneOrDelimited a
   = One a
   | Many (DelimitedNonEmpty a)
 
-data Type e
+data PSType e
   = TypeVar (Name Ident)
   | TypeConstructor (QualifiedName Proper)
   | TypeWildcard SourceToken
   | TypeHole (Name Ident)
   | TypeString SourceToken String
-  | TypeRow (Wrapped (Row e))
-  | TypeRecord (Wrapped (Row e))
-  | TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)
-  | TypeKinded (Type e) SourceToken (Type e)
-  | TypeApp (Type e) (NonEmptyArray (Type e))
-  | TypeOp (Type e) (NonEmptyArray (Tuple (QualifiedName Operator) (Type e)))
+  | TypeRow (Wrapped (PSRow e))
+  | TypeRecord (Wrapped (PSRow e))
+  | TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (PSType e)
+  | TypeKinded (PSType e) SourceToken (PSType e)
+  | TypeApp (PSType e) (NonEmptyArray (PSType e))
+  | TypeOp (PSType e) (NonEmptyArray (Tuple (QualifiedName Operator) (PSType e)))
   | TypeOpName (QualifiedName Operator)
-  | TypeArr (Type e) SourceToken (Type e)
+  | TypeArr (PSType e) SourceToken (PSType e)
   | TypeArrName SourceToken
-  | TypeConstrained (Type e) SourceToken (Type e)
-  | TypeParens (Wrapped (Type e))
-  | TypeUnaryRow SourceToken (Type e)
+  | TypeConstrained (PSType e) SourceToken (PSType e)
+  | TypeParens (Wrapped (PSType e))
+  | TypeUnaryRow SourceToken (PSType e)
   | TypeError e
 
 data TypeVarBinding e
-  = TypeVarKinded (Wrapped (Labeled (Name Ident) (Type e)))
+  = TypeVarKinded (Wrapped (Labeled (Name Ident) (PSType e)))
   | TypeVarName (Name Ident)
 
-newtype Row e = Row
-  { labels :: Maybe (Separated (Labeled (Name Label) (Type e)))
-  , tail :: Maybe (Tuple SourceToken (Type e))
+newtype PSRow e = PSRow
+  { labels :: Maybe (Separated (Labeled (Name Label) (PSType e)))
+  , tail :: Maybe (Tuple SourceToken (PSType e))
   }
 
-derive instance newtypeRow :: Newtype (Row e) _
+derive instance newtypeRow :: Newtype (PSRow e) _
 
-newtype Module e = Module
+newtype PSModule e = PSModule
   { header :: ModuleHeader e
   , body :: ModuleBody e
   }
@@ -198,7 +197,7 @@ newtype ModuleHeader e = ModuleHeader
   }
 
 newtype ModuleBody e = ModuleBody
-  { decls :: Array (Declaration e)
+  { decls :: Array (PSDeclaration e)
   , trailingComments :: Array (Comment LineFeed)
   , end :: SourcePos
   }
@@ -219,15 +218,15 @@ data DataMembers
   = DataAll SourceToken
   | DataEnumerated (Delimited (Name Proper))
 
-data Declaration e
+data PSDeclaration e
   = DeclData (DataHead e) (Maybe (Tuple SourceToken (Separated (DataCtor e))))
-  | DeclType (DataHead e) SourceToken (Type e)
-  | DeclNewtype (DataHead e) SourceToken (Name Proper) (Type e)
-  | DeclClass (ClassHead e) (Maybe (Tuple SourceToken (NonEmptyArray (Labeled (Name Ident) (Type e)))))
+  | DeclType (DataHead e) SourceToken (PSType e)
+  | DeclNewtype (DataHead e) SourceToken (Name Proper) (PSType e)
+  | DeclClass (ClassHead e) (Maybe (Tuple SourceToken (NonEmptyArray (Labeled (Name Ident) (PSType e)))))
   | DeclInstanceChain (Separated (Instance e))
   | DeclDerive SourceToken (Maybe SourceToken) (InstanceHead e)
-  | DeclKindSignature SourceToken (Labeled (Name Proper) (Type e))
-  | DeclSignature (Labeled (Name Ident) (Type e))
+  | DeclKindSignature SourceToken (Labeled (Name Proper) (PSType e))
+  | DeclSignature (Labeled (Name Ident) (PSType e))
   | DeclValue (ValueBindingFields e)
   | DeclFixity FixityFields
   | DeclForeign SourceToken SourceToken (Foreign e)
@@ -242,7 +241,7 @@ newtype Instance e = Instance
 derive instance newtypeInstance :: Newtype (Instance e) _
 
 data InstanceBinding e
-  = InstanceBindingSignature (Labeled (Name Ident) (Type e))
+  = InstanceBindingSignature (Labeled (Name Ident) (PSType e))
   | InstanceBindingName (ValueBindingFields e)
 
 newtype ImportDecl e = ImportDecl
@@ -269,12 +268,12 @@ type DataHead e =
 
 newtype DataCtor e = DataCtor
   { name :: Name Proper
-  , fields :: Array (Type e)
+  , fields :: Array (PSType e)
   }
 
 type ClassHead e =
   { keyword :: SourceToken
-  , super :: Maybe (Tuple (OneOrDelimited (Type e)) SourceToken)
+  , super :: Maybe (Tuple (OneOrDelimited (PSType e)) SourceToken)
   , name :: Name Proper
   , vars :: Array (TypeVarBinding e)
   , fundeps :: Maybe (Tuple SourceToken (Separated ClassFundep))
@@ -288,9 +287,9 @@ type InstanceHead e =
   { keyword :: SourceToken
   , name :: Name Ident
   , separator :: SourceToken
-  , constraints :: Maybe (Tuple (OneOrDelimited (Type e)) SourceToken)
+  , constraints :: Maybe (Tuple (OneOrDelimited (PSType e)) SourceToken)
   , className :: QualifiedName Proper
-  , types :: Array (Type e)
+  , types :: Array (PSType e)
   }
 
 data Fixity
@@ -310,7 +309,7 @@ type FixityFields =
 
 type ValueBindingFields e =
   { name :: Name Ident
-  , binders :: Array (Binder e)
+  , binders :: Array (PSBinder e)
   , guarded :: Guarded e
   }
 
@@ -326,13 +325,13 @@ newtype GuardedExpr e = GuardedExpr
   }
 
 newtype PatternGuard e = PatternGuard
-  { binder :: Maybe (Tuple (Binder e) SourceToken)
-  , expr :: Expr e
+  { binder :: Maybe (Tuple (PSBinder e) SourceToken)
+  , expr :: PSExpr e
   }
 
 data Foreign e
-  = ForeignValue (Labeled (Name Ident) (Type e))
-  | ForeignData SourceToken (Labeled (Name Proper) (Type e))
+  = ForeignValue (Labeled (Name Ident) (PSType e))
+  | ForeignData SourceToken (Labeled (Name Proper) (PSType e))
   | ForeignKind SourceToken (Name Proper)
 
 data Role
@@ -340,7 +339,7 @@ data Role
   | Representational
   | Phantom
 
-data Expr e
+data PSExpr e
   = ExprHole (Name Ident)
   | ExprSection SourceToken
   | ExprIdent (QualifiedName Ident)
@@ -350,17 +349,17 @@ data Expr e
   | ExprString SourceToken String
   | ExprInt SourceToken Int
   | ExprNumber SourceToken Number
-  | ExprArray (Delimited (Expr e))
-  | ExprRecord (Delimited (RecordLabeled (Expr e)))
-  | ExprParens (Wrapped (Expr e))
-  | ExprTyped (Expr e) SourceToken (Type e)
-  | ExprInfix (Expr e) (NonEmptyArray (Tuple (Wrapped (Expr e)) (Expr e)))
-  | ExprOp (Expr e) (NonEmptyArray (Tuple (QualifiedName Operator) (Expr e)))
+  | ExprArray (Delimited (PSExpr e))
+  | ExprRecord (Delimited (RecordLabeled (PSExpr e)))
+  | ExprParens (Wrapped (PSExpr e))
+  | ExprTyped (PSExpr e) SourceToken (PSType e)
+  | ExprInfix (PSExpr e) (NonEmptyArray (Tuple (Wrapped (PSExpr e)) (PSExpr e)))
+  | ExprOp (PSExpr e) (NonEmptyArray (Tuple (QualifiedName Operator) (PSExpr e)))
   | ExprOpName (QualifiedName Operator)
-  | ExprNegate SourceToken (Expr e)
+  | ExprNegate SourceToken (PSExpr e)
   | ExprRecordAccessor (RecordAccessor e)
-  | ExprRecordUpdate (Expr e) (DelimitedNonEmpty (RecordUpdate e))
-  | ExprApp (Expr e) (NonEmptyArray (Expr e))
+  | ExprRecordUpdate (PSExpr e) (DelimitedNonEmpty (RecordUpdate e))
+  | ExprApp (PSExpr e) (NonEmptyArray (PSExpr e))
   | ExprLambda (Lambda e)
   | ExprIf (IfThenElse e)
   | ExprCase (CaseOf e)
@@ -374,56 +373,56 @@ data RecordLabeled a
   | RecordField (Name Label) SourceToken a
 
 data RecordUpdate e
-  = RecordUpdateLeaf (Name Label) SourceToken (Expr e)
+  = RecordUpdateLeaf (Name Label) SourceToken (PSExpr e)
   | RecordUpdateBranch (Name Label) (DelimitedNonEmpty (RecordUpdate e))
 
 type RecordAccessor e =
-  { expr :: Expr e
+  { expr :: PSExpr e
   , dot :: SourceToken
   , path :: Separated (Name Label)
   }
 
 type Lambda e =
   { symbol :: SourceToken
-  , binders :: NonEmptyArray (Binder e)
+  , binders :: NonEmptyArray (PSBinder e)
   , arrow :: SourceToken
-  , body :: Expr e
+  , body :: PSExpr e
   }
 
 type IfThenElse e =
   { keyword :: SourceToken
-  , cond :: Expr e
+  , cond :: PSExpr e
   , then :: SourceToken
-  , true :: Expr e
+  , true :: PSExpr e
   , else :: SourceToken
-  , false :: Expr e
+  , false :: PSExpr e
   }
 
 type CaseOf e =
   { keyword :: SourceToken
-  , head :: Separated (Expr e)
+  , head :: Separated (PSExpr e)
   , of :: SourceToken
-  , branches :: NonEmptyArray (Tuple (Separated (Binder e)) (Guarded e))
+  , branches :: NonEmptyArray (Tuple (Separated (PSBinder e)) (Guarded e))
   }
 
 type LetIn e =
   { keyword :: SourceToken
   , bindings :: NonEmptyArray (LetBinding e)
   , in :: SourceToken
-  , body :: Expr e
+  , body :: PSExpr e
   }
 
 newtype Where e = Where
-  { expr :: Expr e
+  { expr :: PSExpr e
   , bindings :: Maybe (Tuple SourceToken (NonEmptyArray (LetBinding e)))
   }
 
 derive instance newtypeWhere :: Newtype (Where e) _
 
 data LetBinding e
-  = LetBindingSignature (Labeled (Name Ident) (Type e))
+  = LetBindingSignature (Labeled (Name Ident) (PSType e))
   | LetBindingName (ValueBindingFields e)
-  | LetBindingPattern (Binder e) SourceToken (Where e)
+  | LetBindingPattern (PSBinder e) SourceToken (Where e)
   | LetBindingError e
 
 type DoBlock e =
@@ -433,30 +432,30 @@ type DoBlock e =
 
 data DoStatement e
   = DoLet SourceToken (NonEmptyArray (LetBinding e))
-  | DoDiscard (Expr e)
-  | DoBind (Binder e) SourceToken (Expr e)
+  | DoDiscard (PSExpr e)
+  | DoBind (PSBinder e) SourceToken (PSExpr e)
   | DoError e
 
 type AdoBlock e =
   { keyword :: SourceToken
   , statements :: Array (DoStatement e)
   , in :: SourceToken
-  , result :: Expr e
+  , result :: PSExpr e
   }
 
-data Binder e
+data PSBinder e
   = BinderWildcard SourceToken
   | BinderVar (Name Ident)
-  | BinderNamed (Name Ident) SourceToken (Binder e)
-  | BinderConstructor (QualifiedName Proper) (Array (Binder e))
+  | BinderNamed (Name Ident) SourceToken (PSBinder e)
+  | BinderConstructor (QualifiedName Proper) (Array (PSBinder e))
   | BinderBoolean SourceToken Boolean
   | BinderChar SourceToken Char
   | BinderString SourceToken String
   | BinderInt (Maybe SourceToken) SourceToken Int
   | BinderNumber (Maybe SourceToken) SourceToken Number
-  | BinderArray (Delimited (Binder e))
-  | BinderRecord (Delimited (RecordLabeled (Binder e)))
-  | BinderParens (Wrapped (Binder e))
-  | BinderTyped (Binder e) SourceToken (Type e)
-  | BinderOp (Binder e) (NonEmptyArray (Tuple (QualifiedName Operator) (Binder e)))
+  | BinderArray (Delimited (PSBinder e))
+  | BinderRecord (Delimited (RecordLabeled (PSBinder e)))
+  | BinderParens (Wrapped (PSBinder e))
+  | BinderTyped (PSBinder e) SourceToken (PSType e)
+  | BinderOp (PSBinder e) (NonEmptyArray (Tuple (QualifiedName Operator) (PSBinder e)))
   | BinderError e

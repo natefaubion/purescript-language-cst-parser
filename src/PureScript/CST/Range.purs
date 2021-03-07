@@ -14,11 +14,10 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (foldMap)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple(..), fst, snd)
-import Prim (Array)
 import PureScript.CST.Errors (RecoveredError(..))
 import PureScript.CST.Range.TokenList (TokenList, cons, singleton)
 import PureScript.CST.Range.TokenList as TokenList
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), DoStatement(..), Export(..), Expr(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), Name(..), OneOrDelimited(..), PatternGuard(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), SourceRange, Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (ClassFundep(..), DataCtor(..), DataMembers(..), DoStatement(..), Export(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Labeled(..), LetBinding(..), ModuleBody(..), ModuleHeader(..), Name(..), OneOrDelimited(..), PSBinder(..), PSDeclaration(..), PSExpr(..), PSModule(..), PSRow(..), PSType(..), PatternGuard(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Separated(..), SourceRange, TypeVarBinding(..), Where(..), Wrapped(..))
 
 class RangeOf a where
   rangeOf :: a -> SourceRange
@@ -59,14 +58,14 @@ instance rangeOfRecoveredError :: RangeOf RecoveredError where
 instance tokensOfRecoveredError :: TokensOf RecoveredError where
   tokensOf (RecoveredError { tokens }) = TokenList.fromArray tokens
 
-instance rangeOfModule :: RangeOf (Module e) where
-  rangeOf (Module { header: ModuleHeader header, body: ModuleBody body }) =
+instance rangeOfModule :: RangeOf (PSModule e) where
+  rangeOf (PSModule { header: ModuleHeader header, body: ModuleBody body }) =
     { start: header.keyword.range.start
     , end: body.end
     }
 
-instance tokensOfModule :: TokensOf e => TokensOf (Module e) where
-  tokensOf (Module { header: ModuleHeader header, body: ModuleBody body }) =
+instance tokensOfModule :: TokensOf e => TokensOf (PSModule e) where
+  tokensOf (PSModule { header: ModuleHeader header, body: ModuleBody body }) =
     cons header.keyword
       $ tokensOf header.name
         <> defer (\_ -> foldMap tokensOf header.exports)
@@ -131,7 +130,7 @@ instance tokensOfOneOrDelimited :: TokensOf a => TokensOf (OneOrDelimited a) whe
     One a -> tokensOf a
     Many as -> tokensOf as
 
-instance rangeOfType :: RangeOf e => RangeOf (Type e) where
+instance rangeOfType :: RangeOf e => RangeOf (PSType e) where
   rangeOf = case _ of
     TypeVar n ->
       rangeOf n
@@ -184,7 +183,7 @@ instance rangeOfType :: RangeOf e => RangeOf (Type e) where
     TypeError e ->
       rangeOf e
 
-instance tokensOfType :: TokensOf e => TokensOf (Type e) where
+instance tokensOfType :: TokensOf e => TokensOf (PSType e) where
   tokensOf = case _ of
     TypeVar n ->
       tokensOf n
@@ -231,8 +230,8 @@ instance tokensOfType :: TokensOf e => TokensOf (Type e) where
     TypeError e ->
       tokensOf e
 
-instance tokensOfRow :: TokensOf e => TokensOf (Row e) where
-  tokensOf (Row { labels, tail }) =
+instance tokensOfRow :: TokensOf e => TokensOf (PSRow e) where
+  tokensOf (PSRow { labels, tail }) =
     foldMap tokensOf labels
       <> foldMap (\(Tuple t ty) -> cons t $ tokensOf ty) tail
 
@@ -401,7 +400,7 @@ instance tokensOfDataCtor :: TokensOf e => TokensOf (DataCtor e) where
   tokensOf (DataCtor { name, fields }) =
     tokensOf name <> tokensOf fields
 
-instance rangeOfDecl :: RangeOf e => RangeOf (Declaration e) where
+instance rangeOfDecl :: RangeOf e => RangeOf (PSDeclaration e) where
   rangeOf = case _ of
     DeclData { keyword, name, vars } ctors -> do
       let
@@ -480,7 +479,7 @@ instance rangeOfDecl :: RangeOf e => RangeOf (Declaration e) where
     DeclError e ->
       rangeOf e
 
-instance tokensOfDecl :: TokensOf e => TokensOf (Declaration e) where
+instance tokensOfDecl :: TokensOf e => TokensOf (PSDeclaration e) where
   tokensOf = case _ of
     DeclData { keyword, name, vars } ctors ->
       cons keyword $ defer \_ ->
@@ -678,7 +677,7 @@ instance tokensOfInstanceBinding :: TokensOf e => TokensOf (InstanceBinding e) w
         <> tokensOf binders
         <> tokensOf guarded
 
-instance rangeOfExpr :: RangeOf e => RangeOf (Expr e) where
+instance rangeOfExpr :: RangeOf e => RangeOf (PSExpr e) where
   rangeOf = case _ of
     ExprHole n ->
       rangeOf n
@@ -761,7 +760,7 @@ instance rangeOfExpr :: RangeOf e => RangeOf (Expr e) where
     ExprError e ->
       rangeOf e
 
-instance tokensOfExpr :: TokensOf e => TokensOf (Expr e) where
+instance tokensOfExpr :: TokensOf e => TokensOf (PSExpr e) where
   tokensOf = case _ of
     ExprHole n ->
       tokensOf n
@@ -894,7 +893,7 @@ instance tokensOfLetBinding :: TokensOf e => TokensOf (LetBinding e) where
     LetBindingError e ->
       tokensOf e
 
-instance rangeOfBinder :: RangeOf e => RangeOf (Binder e) where
+instance rangeOfBinder :: RangeOf e => RangeOf (PSBinder e) where
   rangeOf = case _ of
     BinderWildcard t ->
       t.range
@@ -951,7 +950,7 @@ instance rangeOfBinder :: RangeOf e => RangeOf (Binder e) where
     BinderError e ->
       rangeOf e
 
-instance tokensOfBinder :: TokensOf e => TokensOf (Binder e) where
+instance tokensOfBinder :: TokensOf e => TokensOf (PSBinder e) where
   tokensOf = case _ of
     BinderWildcard t ->
       singleton t
