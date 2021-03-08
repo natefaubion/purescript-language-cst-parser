@@ -11,7 +11,7 @@ import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (un)
+import Data.Newtype (un, unwrap)
 import Data.Number.Format as NF
 import Data.String as Str
 import Data.String.CodeUnits as String
@@ -19,7 +19,7 @@ import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Tuple (Tuple, snd)
+import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -38,6 +38,9 @@ import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
+import PureScript.CST.Print as Print
+import PureScript.CST.Range (tokensOf)
+import PureScript.CST.Range.TokenList as TokenList
 import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Module)
 
@@ -73,9 +76,9 @@ main = runAff_ (either throwException mempty) do
     pure result
 
   let
-    partition = moduleResults # partitionMap \{ path, errors, duration } ->
+    partition = moduleResults # partitionMap \{ path, errors, duration, printerMatches } ->
       if Array.null errors then
-        Right { path, duration }
+        Right { path, duration, printerMatches }
       else
         Left { path, errors, duration }
 
@@ -105,6 +108,29 @@ main = runAff_ (either throwException mempty) do
 
   liftEffect $ Console.log successMessage
   liftEffect $ Console.log $ displayDurationStats (getDurationStats partition.right) "Success Case"
+
+  let
+    printerFailed = Array.filter (_.printerMatches >>> eq (Just false)) partition.right
+
+    printerFailedMessage = Array.intercalate " "
+      [ "Printer failed for"
+      , show (Array.length printerFailed)
+      , "of"
+      , show (Array.length partition.right)
+      , "successfully parsed modules."
+      ]
+
+  unless (Array.null printerFailed) $ liftEffect do
+    Console.error printerFailedMessage
+    forWithIndex_ printerFailed \ix failed -> do
+      let
+        message = Array.intercalate "\n"
+          [ "---- [Printer Error " <> show (ix + 1) <> " of " <> show (Array.length printerFailed) <> "] ----"
+          , ""
+          , failed.path
+          ]
+      Console.error message
+
 
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
@@ -136,6 +162,7 @@ type ModuleResult =
   { path :: FilePath
   , errors :: Array PositionedError
   , duration :: Milliseconds
+  , printerMatches :: Maybe Boolean
   }
 
 parseModuleFromFile :: FilePath -> Aff ModuleResult
@@ -144,11 +171,23 @@ parseModuleFromFile path = do
   before <- liftEffect hrtime
   let parsed = parse (lex contents)
   duration <- liftEffect $ hrtimeDiff before
-  let durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
+  let
+    durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
+
+    printerMatches = case parsed of
+      Right (Tuple mod _) -> do
+        let
+          printed =
+            foldMap Print.printSourceToken (TokenList.toArray (tokensOf mod))
+              <> foldMap (Print.printComment Print.printLineFeed) (unwrap (unwrap mod).body).trailingComments
+        pure $ contents == printed
+      _ -> Nothing
+
   pure
     { path
     , errors: either pure snd parsed
     , duration: durationMillis
+    , printerMatches
     }
 
 parse :: TokenStream -> Either PositionedError (Tuple (Recovered Module) (Array PositionedError))
