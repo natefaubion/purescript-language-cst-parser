@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      
+      - uses: purescript-contrib/setup-purescript@main
+        with:
+          purescript: "0.13.8"
+          spago: "0.19.0"
+          psa: "0.8.2"
+
+      - name: Cache PureScript dependencies
+        uses: actions/cache@v2
+        with:
+          key: ${{ runner.os }}-spago-${{ hashFiles('**/*.dhall') }}
+          path: |
+            .spago
+            output
+
+      - name: Build source
+        run: spago build --purs-args '--censor-lib --strict'
+
+      - name: Parse package sets
+        run: npm run parse-package-set
+
+      - name: Run file benchmark
+        run: npm run bench-file test/Main.purs
