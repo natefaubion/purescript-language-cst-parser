@@ -11,7 +11,7 @@ import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (un, unwrap)
+import Data.Newtype (unwrap)
 import Data.Number.Format as NF
 import Data.String as Str
 import Data.String.CodeUnits as String
@@ -39,9 +39,6 @@ import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
-import PureScript.CST.Print as Print
-import PureScript.CST.Range (tokensOf)
-import PureScript.CST.Range.TokenList as TokenList
 import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Module)
 
