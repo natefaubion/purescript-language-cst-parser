@@ -111,7 +111,7 @@ main = runAff_ (either throwException mempty) do
     printerSucceeded = Array.filter (_.printerMatches >>> eq (Just true)) partition.right
 
     printerSuccessMessage = Array.intercalate " "
-      [ "Successfully printer"
+      [ "Successfully printed"
       , show (Array.length printerSucceeded)
       , "of"
       , show (Array.length partition.right)
