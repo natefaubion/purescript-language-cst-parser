@@ -132,7 +132,6 @@ main = runAff_ (either throwException mempty) do
           ]
       Console.error message
 
-
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
 defaultSpagoDhall = Array.intercalate "\n"
