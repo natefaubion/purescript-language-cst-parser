@@ -33,6 +33,7 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
+import PureScript.CST (printModule)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered)
@@ -176,11 +177,7 @@ parseModuleFromFile path = do
 
     printerMatches = case parsed of
       Right (Tuple mod _) -> do
-        let
-          printed =
-            foldMap Print.printSourceToken (TokenList.toArray (tokensOf mod))
-              <> foldMap (Print.printComment Print.printLineFeed) (unwrap (unwrap mod).body).trailingComments
-        pure $ contents == printed
+        pure $ contents == printModule mod
       _ -> Nothing
 
   pure
