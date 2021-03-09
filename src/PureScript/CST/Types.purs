@@ -165,8 +165,8 @@ data Type e
   | TypeApp (Type e) (NonEmptyArray (Type e))
   | TypeOp (Type e) (NonEmptyArray (Tuple (QualifiedName Operator) (Type e)))
   | TypeOpName (QualifiedName Operator)
-  | TypeArr (Type e) SourceToken (Type e)
-  | TypeArrName SourceToken
+  | TypeArrow (Type e) SourceToken (Type e)
+  | TypeArrowName SourceToken
   | TypeConstrained (Type e) SourceToken (Type e)
   | TypeParens (Wrapped (Type e))
   | TypeUnaryRow SourceToken (Type e)
