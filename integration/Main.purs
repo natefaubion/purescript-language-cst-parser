@@ -11,7 +11,7 @@ import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (unwrap)
+import Data.Newtype (un)
 import Data.Number.Format as NF
 import Data.String as Str
 import Data.String.CodeUnits as String
