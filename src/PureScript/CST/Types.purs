@@ -188,6 +188,8 @@ newtype Module e = Module
   , body :: ModuleBody e
   }
 
+derive instance newtypeModule :: Newtype (Module e) _
+
 newtype ModuleHeader e = ModuleHeader
   { keyword :: SourceToken
   , name :: Name ModuleName

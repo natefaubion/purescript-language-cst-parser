@@ -19,7 +19,7 @@ import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Tuple (Tuple, snd)
+import Data.Tuple (Tuple(..), snd)
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -33,6 +33,7 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
+import PureScript.CST (printModule)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered)
@@ -73,9 +74,9 @@ main = runAff_ (either throwException mempty) do
     pure result
 
   let
-    partition = moduleResults # partitionMap \{ path, errors, duration } ->
+    partition = moduleResults # partitionMap \{ path, errors, duration, printerMatches } ->
       if Array.null errors then
-        Right { path, duration }
+        Right { path, duration, printerMatches }
       else
         Left { path, errors, duration }
 
@@ -105,6 +106,41 @@ main = runAff_ (either throwException mempty) do
 
   liftEffect $ Console.log successMessage
   liftEffect $ Console.log $ displayDurationStats (getDurationStats partition.right) "Success Case"
+
+  let
+    printerSucceeded = Array.filter (_.printerMatches >>> eq (Just true)) partition.right
+
+    printerSuccessMessage = Array.intercalate " "
+      [ "Successfully printed"
+      , show (Array.length printerSucceeded)
+      , "of"
+      , show (Array.length partition.right)
+      , "successully parsed modules."
+      ]
+
+  liftEffect $ Console.log printerSuccessMessage
+
+  let
+    printerFailed = Array.filter (_.printerMatches >>> eq (Just false)) partition.right
+
+    printerFailedMessage = Array.intercalate " "
+      [ "Printer failed for"
+      , show (Array.length printerFailed)
+      , "of"
+      , show (Array.length partition.right)
+      , "successfully parsed modules."
+      ]
+
+  unless (Array.null printerFailed) $ liftEffect do
+    Console.error printerFailedMessage
+    forWithIndex_ printerFailed \ix failed -> do
+      let
+        message = Array.intercalate "\n"
+          [ "---- [Printer Error " <> show (ix + 1) <> " of " <> show (Array.length printerFailed) <> "] ----"
+          , ""
+          , failed.path
+          ]
+      Console.error message
 
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
@@ -136,6 +172,7 @@ type ModuleResult =
   { path :: FilePath
   , errors :: Array PositionedError
   , duration :: Milliseconds
+  , printerMatches :: Maybe Boolean
   }
 
 parseModuleFromFile :: FilePath -> Aff ModuleResult
@@ -144,11 +181,19 @@ parseModuleFromFile path = do
   before <- liftEffect hrtime
   let parsed = parse (lex contents)
   duration <- liftEffect $ hrtimeDiff before
-  let durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
+  let
+    durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
+
+    printerMatches = case parsed of
+      Right (Tuple mod _) -> do
+        pure $ contents == printModule mod
+      _ -> Nothing
+
   pure
     { path
     , errors: either pure snd parsed
     , duration: durationMillis
+    , printerMatches
     }
 
 parse :: TokenStream -> Either PositionedError (Tuple (Recovered Module) (Array PositionedError))
