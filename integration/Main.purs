@@ -108,6 +108,19 @@ main = runAff_ (either throwException mempty) do
   liftEffect $ Console.log $ displayDurationStats (getDurationStats partition.right) "Success Case"
 
   let
+    printerSucceeded = Array.filter (_.printerMatches >>> eq (Just true)) partition.right
+
+    printerSuccessMessage = Array.intercalate " "
+      [ "Successfully printer"
+      , show (Array.length printerSucceeded)
+      , "of"
+      , show (Array.length partition.right)
+      , "successully parsed modules."
+      ]
+
+  liftEffect $ Console.log printerSuccessMessage
+
+  let
     printerFailed = Array.filter (_.printerMatches >>> eq (Just false)) partition.right
 
     printerFailedMessage = Array.intercalate " "
