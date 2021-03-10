@@ -562,7 +562,7 @@ parseExpr1 = defer \_ -> do
 parseExpr2 :: Parser (Recovered Expr)
 parseExpr2 = defer \_ -> do
   expr <- parseExpr3
-  ops <- many (Tuple <$> parseTickExpr <*> parseExpr)
+  ops <- many (Tuple <$> parseTickExpr <*> parseExpr3)
   pure case NonEmptyArray.fromArray ops of
     Nothing -> expr
     Just os -> ExprInfix expr os
