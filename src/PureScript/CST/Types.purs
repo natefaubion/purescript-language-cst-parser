@@ -198,6 +198,8 @@ newtype ModuleHeader e = ModuleHeader
   , imports :: Array (ImportDecl e)
   }
 
+derive instance newtypeModuleHeader :: Newtype (ModuleHeader e) _
+
 newtype ModuleBody e = ModuleBody
   { decls :: Array (Declaration e)
   , trailingComments :: Array (Comment LineFeed)
@@ -253,6 +255,8 @@ newtype ImportDecl e = ImportDecl
   , qualified :: Maybe (Tuple SourceToken (Name ModuleName))
   }
 
+derive instance newtypeImportDecl :: Newtype (ImportDecl e) _
+
 data Import e
   = ImportValue (Name Ident)
   | ImportOp (Name Operator)
@@ -272,6 +276,8 @@ newtype DataCtor e = DataCtor
   { name :: Name Proper
   , fields :: Array (Type e)
   }
+
+derive instance newtypeDataCtor :: Newtype (DataCtor e) _
 
 type ClassHead e =
   { keyword :: SourceToken
@@ -326,10 +332,14 @@ newtype GuardedExpr e = GuardedExpr
   , where :: Where e
   }
 
+derive instance newtypeGuardedExpr :: Newtype (GuardedExpr e) _
+
 newtype PatternGuard e = PatternGuard
   { binder :: Maybe (Tuple (Binder e) SourceToken)
   , expr :: Expr e
   }
+
+derive instance newtypePatternGuard :: Newtype (PatternGuard e) _
 
 data Foreign e
   = ForeignValue (Labeled (Name Ident) (Type e))
