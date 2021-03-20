@@ -5,13 +5,14 @@ import Prelude
 import Control.Parallel (parTraverse)
 import Data.Array (foldMap)
 import Data.Array as Array
+import Data.Array.NonEmpty as NEA
 import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
 import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (un)
+import Data.Newtype (un, unwrap)
 import Data.Number.Format as NF
 import Data.String as Str
 import Data.String.CodeUnits as String
@@ -19,7 +20,7 @@ import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Tuple (Tuple, snd)
+import Data.Tuple (Tuple)
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -33,13 +34,14 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
+import PureScript.CST (RecoveredParserResult(..), parseModule)
 import PureScript.CST.Errors (printParseError)
-import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
 import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Module)
+import PureScript.CST.Utils.ModuleGraph (sortModules)
 
 foreign import tmpdir :: String -> Effect String
 
@@ -106,6 +108,12 @@ main = runAff_ (either throwException mempty) do
   liftEffect $ Console.log successMessage
   liftEffect $ Console.log $ displayDurationStats (getDurationStats partition.right) "Success Case"
 
+  let
+    mods = Array.mapMaybe _.mbModule moduleResults
+    sorted = sortModules mods
+
+  liftEffect $ Console.log $ Array.intercalate ", " $ map (unwrap >>> _.header >>> unwrap >>> _.name >>> unwrap >>> _.name >>> show) sorted
+
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String
 defaultSpagoDhall = Array.intercalate "\n"
@@ -136,18 +144,32 @@ type ModuleResult =
   { path :: FilePath
   , errors :: Array PositionedError
   , duration :: Milliseconds
+  , mbModule :: Maybe (Module Void)
   }
 
 parseModuleFromFile :: FilePath -> Aff ModuleResult
 parseModuleFromFile path = do
   contents <- readTextFile UTF8 path
   before <- liftEffect hrtime
-  let parsed = parse (lex contents)
+  let parsed = parseModule contents
   duration <- liftEffect $ hrtimeDiff before
-  let durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
+  let
+    durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
+
+    errors = case parsed of
+      ParseSucceeded _ -> []
+      ParseSucceededWithErrors _ errs -> NEA.toArray errs
+      ParseFailed err -> [ err ]
+
+    mbModule = case parsed of
+      ParseSucceeded mod -> Just mod
+      ParseSucceededWithErrors _ _ -> Nothing
+      ParseFailed _ -> Nothing
+
   pure
     { path
-    , errors: either pure snd parsed
+    , errors
+    , mbModule
     , duration: durationMillis
     }
 

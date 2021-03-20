@@ -189,6 +189,8 @@ newtype Module e = Module
   , body :: ModuleBody e
   }
 
+derive instance newtypeModule :: Newtype (Module e) _
+
 newtype ModuleHeader e = ModuleHeader
   { keyword :: SourceToken
   , name :: Name ModuleName
@@ -196,6 +198,8 @@ newtype ModuleHeader e = ModuleHeader
   , where :: SourceToken
   , imports :: Array (ImportDecl e)
   }
+
+derive instance newtypeModuleHeader :: Newtype (ModuleHeader e) _
 
 newtype ModuleBody e = ModuleBody
   { decls :: Array (Declaration e)
