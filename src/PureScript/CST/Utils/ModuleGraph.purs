@@ -54,7 +54,7 @@ sortModules modules = do
 topoSort :: forall a. Show a => Ord a => Graph a -> Array a
 topoSort graph = do
   let { sorted } = runFree (un Identity) (go { roots: startingModules, sorted: [], usages: importCounts })
-  sorted
+  Array.reverse sorted
   where
   go
     :: { roots :: Array a, sorted :: Array a, usages :: Map a Int }

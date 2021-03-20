@@ -112,6 +112,7 @@ main = runAff_ (either throwException mempty) do
     mods = Array.mapMaybe _.mbModule moduleResults
     sorted = sortModules mods
 
+  liftEffect $ Console.log $ "Sorted Module Graph for " <> show (Array.length sorted) <> " Modules"
   liftEffect $ Console.log $ Array.intercalate ", " $ map (unwrap >>> _.header >>> unwrap >>> _.name >>> unwrap >>> _.name >>> show) sorted
 
 -- TODO: Upgrade packages ref to 0.14 package set
