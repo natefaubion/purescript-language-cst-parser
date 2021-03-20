@@ -1,4 +1,7 @@
-module PureScript.CST.Utils.ModuleGraph where
+module PureScript.CST.Utils.ModuleGraph
+  ( moduleGraph
+  , sortModules
+  ) where
 
 import Prelude
 
@@ -6,10 +9,11 @@ import Data.Array as Array
 import Data.Foldable (foldl)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Tuple (Tuple(..), fst)
+import Data.Traversable (for)
+import Data.Tuple (Tuple(..))
 import PureScript.CST.Types (ImportDecl(..), Module(..), ModuleHeader(..), ModuleName, Name(..))
 
 type Graph a = Map a (Set a)
@@ -45,66 +49,39 @@ sortModules modules = do
 
 topoSort :: forall a. Show a => Ord a => Graph a -> Array a
 topoSort graph = do
-  let { l } = go { l: [], s: roots, g: reversed, usages: usageCounts, visited: Set.empty }
-  l
+  let { sorted } = go { roots: startingModules, sorted: [], usages: importCounts }
+  sorted
   where
   go
-    :: { l :: Array a, s :: Array a, g :: Graph a, usages :: Map a Int, visited :: Set a }
-    -> { l :: Array a, s :: Array a, g :: Graph a, usages :: Map a Int, visited :: Set a }
-  go { l, s, g, usages, visited } =
-    case Array.uncons s of
-      Nothing -> { l, s, g, usages, visited }
+    :: { roots :: Array a, sorted :: Array a, usages :: Map a Int }
+    -> { roots :: Array a, sorted :: Array a, usages :: Map a Int }
+  go { roots, sorted, usages } =
+    case Array.uncons roots of
+      Nothing -> { roots, sorted, usages }
       Just { head, tail } -> do
         let
-          l' = Array.snoc l head
+          sorted' = Array.snoc sorted head
 
-          visited' = Set.insert head visited
+          reachable = maybe [] Set.toUnfoldable (Map.lookup head graph)
 
-          ms = Array.mapMaybe (\b -> (Map.lookup b g >>= ((Set.toUnfoldable :: Set a -> Array a) >>> Array.find (eq head))) $> b) all
+          usages' = foldl decrementImport usages reachable
 
-          usages' = foldl decrementUsage usages ms
+          roots' = append tail $ fromMaybe [] do
+            newUsages <- for reachable (\r -> Map.lookup r usages' >>= (Tuple r >>> pure))
+            pure $ newUsages # Array.mapMaybe (\(Tuple a count) -> if count == 0 then Just a else Nothing)
 
-          roots' =
-            usages'
-              # Map.toUnfoldable
-              # Array.mapMaybe \(Tuple a count) -> if count == 0 && Array.any (eq a) ms then Just a else Nothing
+        go { roots: roots', sorted: sorted', usages: usages' }
 
-          g' = foldl (updateGraph head) g ms
+  decrementImport :: Map a Int -> a -> Map a Int
+  decrementImport usages k = Map.insertWith add k (-1) usages
 
-          s' =
-            tail
-              # flip append roots'
-              # Set.fromFoldable
-              # flip Set.difference visited'
-              # Set.toUnfoldable
-
-        go { l: l', s: s', g: g', usages: usages', visited: visited' }
-
-  updateGraph :: a -> Graph a -> a -> Graph a
-  updateGraph s g a = Map.update (Set.delete a >>> pure) s g
-
-  all :: Array a
-  all =
-    graph
-      # Map.toUnfoldable
-      # map fst
-
-  reversed :: Graph a
-  reversed = Map.fromFoldableWith Set.union do
-    Tuple a bs <- Map.toUnfoldable graph
-    b <- Set.toUnfoldable bs
-    [ Tuple b (Set.singleton a) ]
-
-  decrementUsage :: Map a Int -> a -> Map a Int
-  decrementUsage usages k = Map.insertWith add k (-1) usages
-
-  roots :: Array a
-  roots =
-    usageCounts
+  startingModules :: Array a
+  startingModules =
+    importCounts
       # Map.toUnfoldable
       # Array.mapMaybe \(Tuple a count) -> if count == 0 then Just a else Nothing
 
-  usageCounts :: Map a Int
-  usageCounts = Map.fromFoldableWith add do
+  importCounts :: Map a Int
+  importCounts = Map.fromFoldableWith add do
     Tuple a bs <- Map.toUnfoldable graph
     [ Tuple a 0 ] <> map (flip Tuple 1) (Set.toUnfoldable bs)
