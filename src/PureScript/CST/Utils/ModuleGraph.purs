@@ -47,9 +47,9 @@ topoSort graph = do
   go
     :: Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
     -> Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
-  go Nothing = Nothing
-  go (Just { roots, sorted, usages }) =
-    case Array.uncons roots of
+  go = case _ of
+    Nothing -> Nothing
+    Just { roots, sorted, usages } -> case Array.uncons roots of
       Nothing ->
         if all (eq 0) usages then
           Just { roots, sorted, usages }
