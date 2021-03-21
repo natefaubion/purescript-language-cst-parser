@@ -10,7 +10,7 @@ import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
 import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Monoid.Additive (Additive(..))
 import Data.Newtype (un)
 import Data.Number.Format as NF
@@ -145,7 +145,7 @@ main = runAff_ (either throwException mempty) do
 
   let
     mods = Array.mapMaybe _.mbModule moduleResults
-    sorted = sortModules mods
+    sorted = fromMaybe [] (sortModules mods)
 
   liftEffect $ Console.log $ "Sorted Module Graph for " <> show (Array.length sorted) <> " Modules"
 

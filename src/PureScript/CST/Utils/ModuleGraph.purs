@@ -7,7 +7,7 @@ import Prelude
 
 import Control.Monad.Free (Free, runFree)
 import Data.Array as Array
-import Data.Foldable (foldl)
+import Data.Foldable (all, foldl)
 import Data.Identity (Identity(..))
 import Data.Map (Map)
 import Data.Map as Map
@@ -35,7 +35,7 @@ moduleHeaders mods =
     # map (\(Module { header: header@(ModuleHeader { name: Name { name } }) }) -> Tuple name header)
     # Map.fromFoldable
 
-sortModules :: forall e. Array (Module e) -> Array (Module e)
+sortModules :: forall e. Array (Module e) -> Maybe (Array (Module e))
 sortModules modules = do
   let
     moduleNames :: Map ModuleName (Module e)
@@ -46,21 +46,24 @@ sortModules modules = do
 
     graph = moduleGraph modules
 
-    sorted = topoSort graph
+  Array.mapMaybe (flip Map.lookup moduleNames) <$> topoSort graph
 
-  Array.mapMaybe (flip Map.lookup moduleNames) sorted
-
-topoSort :: forall a. Ord a => Graph a -> Array a
+topoSort :: forall a. Ord a => Graph a -> Maybe (Array a)
 topoSort graph = do
-  let { sorted } = runFree (un Identity) (go { roots: startingModules, sorted: [], usages: importCounts })
-  Array.reverse sorted
+  let mbResults = runFree (un Identity) (go (Just { roots: startingModules, sorted: [], usages: importCounts }))
+  map (Array.reverse <<< _.sorted) mbResults
   where
   go
-    :: { roots :: Array a, sorted :: Array a, usages :: Map a Int }
-    -> Free Identity { roots :: Array a, sorted :: Array a, usages :: Map a Int }
-  go { roots, sorted, usages } =
+    :: Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
+    -> Free Identity (Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int })
+  go Nothing = pure Nothing
+  go (Just { roots, sorted, usages }) =
     case Array.uncons roots of
-      Nothing -> pure { roots, sorted, usages }
+      Nothing ->
+        if all (eq 0) usages then
+          pure (Just { roots, sorted, usages })
+        else
+          pure Nothing
       Just { head, tail } -> do
         let
           sorted' = Array.snoc sorted head
@@ -71,9 +74,9 @@ topoSort graph = do
 
           roots' = append tail $ fromMaybe [] do
             newUsages <- for reachable (\r -> Map.lookup r usages' >>= (Tuple r >>> pure))
-            pure $ newUsages # Array.mapMaybe (\(Tuple a count) -> if count == 0 then Just a else Nothing)
+            pure $ Array.mapMaybe (\(Tuple a count) -> if count == 0 then Just a else Nothing) newUsages
 
-        go { roots: roots', sorted: sorted', usages: usages' }
+        go (Just { roots: roots', sorted: sorted', usages: usages' })
 
   decrementImport :: Map a Int -> a -> Map a Int
   decrementImport usages k = Map.insertWith add k (-1) usages
