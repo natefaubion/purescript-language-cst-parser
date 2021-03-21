@@ -41,7 +41,7 @@ import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
 import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Module)
-import PureScript.CST.Utils.ModuleGraph (sortModules)
+import PureScript.CST.ModuleGraph (sortModules)
 
 foreign import tmpdir :: String -> Effect String
 

@@ -1,4 +1,4 @@
-module PureScript.CST.Utils.ModuleGraph
+module PureScript.CST.ModuleGraph
   ( moduleGraph
   , sortModules
   ) where
