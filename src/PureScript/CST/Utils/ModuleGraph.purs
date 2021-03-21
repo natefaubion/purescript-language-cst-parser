@@ -22,18 +22,12 @@ import PureScript.CST.Types (ImportDecl(..), Module(..), ModuleHeader(..), Modul
 type Graph a = Map a (Set a)
 
 moduleGraph :: forall e. Array (Module e) -> Graph ModuleName
-moduleGraph = map go <<< moduleHeaders
+moduleGraph = Map.fromFoldable <<< map go
   where
-  go (ModuleHeader { imports }) =
-    imports
-      # map (\(ImportDecl { module: Name { name } }) -> name)
-      # Set.fromFoldable
+  go (Module { header: ModuleHeader { name: Name { name }, imports } }) =
+    Tuple name (Set.fromFoldable (map getImportName imports))
 
-moduleHeaders :: forall e. Array (Module e) -> Map ModuleName (ModuleHeader e)
-moduleHeaders mods =
-  mods
-    # map (\(Module { header: header@(ModuleHeader { name: Name { name } }) }) -> Tuple name header)
-    # Map.fromFoldable
+  getImportName (ImportDecl { module: Name { name } }) = name
 
 sortModules :: forall e. Array (Module e) -> Maybe (Array (Module e))
 sortModules modules = do
