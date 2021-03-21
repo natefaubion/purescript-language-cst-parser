@@ -5,14 +5,11 @@ module PureScript.CST.Utils.ModuleGraph
 
 import Prelude
 
-import Control.Monad.Free (Free, runFree)
 import Data.Array as Array
 import Data.Foldable (all, foldl)
-import Data.Identity (Identity(..))
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Traversable (for)
@@ -44,20 +41,20 @@ sortModules modules = do
 
 topoSort :: forall a. Ord a => Graph a -> Maybe (Array a)
 topoSort graph = do
-  let mbResults = runFree (un Identity) (go (Just { roots: startingModules, sorted: [], usages: importCounts }))
+  let mbResults = go (Just { roots: startingModules, sorted: [], usages: importCounts })
   map (Array.reverse <<< _.sorted) mbResults
   where
   go
     :: Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
-    -> Free Identity (Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int })
-  go Nothing = pure Nothing
+    -> Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
+  go Nothing = Nothing
   go (Just { roots, sorted, usages }) =
     case Array.uncons roots of
       Nothing ->
         if all (eq 0) usages then
-          pure (Just { roots, sorted, usages })
+          Just { roots, sorted, usages }
         else
-          pure Nothing
+          Nothing
       Just { head, tail } -> do
         let
           sorted' = Array.snoc sorted head
