@@ -12,7 +12,6 @@ import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Traversable (for)
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Types (ImportDecl(..), Module(..), ModuleHeader(..), ModuleName, Name(..))
 
@@ -45,40 +44,47 @@ topoSort graph = do
   map (Array.reverse <<< _.sorted) mbResults
   where
   go
-    :: Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
-    -> Maybe { roots :: Array a, sorted :: Array a, usages :: Map a Int }
+    :: Maybe { roots :: Set a, sorted :: Array a, usages :: Map a Int }
+    -> Maybe { roots :: Set a, sorted :: Array a, usages :: Map a Int }
   go = case _ of
     Nothing -> Nothing
-    Just { roots, sorted, usages } -> case Array.uncons roots of
+    Just { roots, sorted, usages } -> case Set.findMin roots of
       Nothing ->
         if all (eq 0) usages then
           Just { roots, sorted, usages }
         else
           Nothing
-      Just { head, tail } -> do
+      Just curr -> do
         let
-          sorted' = Array.snoc sorted head
+          sorted' = Array.snoc sorted curr
 
-          reachable = maybe [] Set.toUnfoldable (Map.lookup head graph)
+          reachable = fromMaybe Set.empty (Map.lookup curr graph)
 
           usages' = foldl decrementImport usages reachable
 
-          roots' = append tail $ fromMaybe [] do
-            newUsages <- for reachable (\r -> Map.lookup r usages' >>= (Tuple r >>> pure))
-            pure $ Array.mapMaybe (\(Tuple a count) -> if count == 0 then Just a else Nothing) newUsages
+          roots' = foldl (appendRoots usages') (Set.delete curr roots) reachable
 
         go (Just { roots: roots', sorted: sorted', usages: usages' })
+
+  appendRoots :: Map a Int -> Set a -> a -> Set a
+  appendRoots usages roots curr = maybe roots (flip Set.insert roots) do
+    count <- Map.lookup curr usages
+    isRoot (Tuple curr count)
 
   decrementImport :: Map a Int -> a -> Map a Int
   decrementImport usages k = Map.insertWith add k (-1) usages
 
-  startingModules :: Array a
+  startingModules :: Set a
   startingModules =
     importCounts
       # Map.toUnfoldable
-      # Array.mapMaybe \(Tuple a count) -> if count == 0 then Just a else Nothing
+      # Array.mapMaybe isRoot
+      # Set.fromFoldable
 
   importCounts :: Map a Int
   importCounts = Map.fromFoldableWith add do
     Tuple a bs <- Map.toUnfoldable graph
     [ Tuple a 0 ] <> map (flip Tuple 1) (Set.toUnfoldable bs)
+
+  isRoot :: Tuple a Int -> Maybe a
+  isRoot (Tuple a count) = if count == 0 then Just a else Nothing
