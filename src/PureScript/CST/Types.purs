@@ -13,7 +13,6 @@ newtype ModuleName = ModuleName String
 derive newtype instance eqModuleName :: Eq ModuleName
 derive newtype instance ordModuleName :: Ord ModuleName
 derive instance newtypeModuleName :: Newtype ModuleName _
-derive newtype instance showModuleName :: Show ModuleName
 
 type SourcePos =
   { line :: Int
