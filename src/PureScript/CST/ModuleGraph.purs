@@ -6,6 +6,8 @@ module PureScript.CST.ModuleGraph
 import Prelude
 
 import Data.Array as Array
+import Data.Bifunctor (bimap)
+import Data.Either (Either(..))
 import Data.Foldable (all, foldl)
 import Data.List (List(..))
 import Data.List as List
@@ -15,6 +17,7 @@ import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
+import Control.Alt (alt)
 import PureScript.CST.Types (ImportDecl(..), Module(..), ModuleHeader(..), ModuleName, Name(..))
 
 type Graph a = Map a (Set a)
@@ -27,7 +30,7 @@ moduleGraph = Map.fromFoldable <<< map go
 
   getImportName (ImportDecl { "module": Name { name } }) = name
 
-sortModules :: forall e. Array (Module e) -> Maybe (Array (Module e))
+sortModules :: forall e. Array (Module e) -> Either (Array (Module e)) (Array (Module e))
 sortModules modules = do
   let
     moduleNames :: Map ModuleName (Module e)
@@ -38,35 +41,44 @@ sortModules modules = do
 
     graph = moduleGraph modules
 
-  Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable <$> topoSort graph
+  bimap (Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable) (Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable) (topoSort graph)
 
-topoSort :: forall a. Ord a => Graph a -> Maybe (List a)
+topoSort :: forall a. Ord a => Graph a -> Either (List a) (List a)
 topoSort graph = do
-  let mbResults = go (Just { roots: startingModules, sorted: Nil, usages: importCounts })
+  let mbResults = go { roots: startingModules, sorted: Nil, usages: importCounts }
   map _.sorted mbResults
   where
   go
-    :: Maybe { roots :: Set a, sorted :: List a, usages :: Map a Int }
-    -> Maybe { roots :: Set a, sorted :: List a, usages :: Map a Int }
-  go = case _ of
-    Nothing -> Nothing
-    Just { roots, sorted, usages } -> case Set.findMin roots of
-      Nothing ->
-        if all (eq 0) usages then
-          Just { roots, sorted, usages }
-        else
-          Nothing
-      Just curr -> do
+    :: { roots :: Set a, sorted :: List a, usages :: Map a Int }
+    -> Either (List a) { roots :: Set a, sorted :: List a, usages :: Map a Int }
+  go { roots, sorted, usages } = case Set.findMin roots of
+    Nothing ->
+      if all (eq 0) usages then
+        Right { roots, sorted, usages }
+      else do
         let
-          sorted' = Cons curr sorted
+          nonLeaf = Set.fromFoldable do
+            Tuple a count <- Map.toUnfoldable usages :: Array (Tuple a Int)
+            if count /= 0 && Map.lookup a graph /= Nothing && Map.lookup a graph /= Just (Set.empty) then
+              [ a ]
+            else
+              []
 
-          reachable = fromMaybe Set.empty (Map.lookup curr graph)
+        case foldl (\b a -> alt b (depthFirst { path: Nil, visited: Set.empty, curr: a })) Nothing nonLeaf of
+          Just cycle -> Left cycle
+          Nothing -> Left Nil
 
-          usages' = foldl decrementImport usages reachable
+    Just curr -> do
+      let
+        sorted' = Cons curr sorted
 
-          roots' = foldl (appendRoots usages') (Set.delete curr roots) reachable
+        reachable = fromMaybe Set.empty (Map.lookup curr graph)
 
-        go (Just { roots: roots', sorted: sorted', usages: usages' })
+        usages' = foldl decrementImport usages reachable
+
+        roots' = foldl (appendRoots usages') (Set.delete curr roots) reachable
+
+      go { roots: roots', sorted: sorted', usages: usages' }
 
   appendRoots :: Map a Int -> Set a -> a -> Set a
   appendRoots usages roots curr = maybe roots (flip Set.insert roots) do
@@ -90,3 +102,13 @@ topoSort graph = do
 
   isRoot :: Tuple a Int -> Maybe a
   isRoot (Tuple a count) = if count == 0 then Just a else Nothing
+
+  depthFirst :: { path :: List a, visited :: Set a, curr :: a } -> Maybe (List a)
+  depthFirst { path, visited, curr } =
+    if Set.member curr visited then
+      Just (Cons curr path)
+    else if Map.lookup curr graph == Just Set.empty || Map.lookup curr graph == Nothing then
+      Nothing
+    else do
+      reachable <- Map.lookup curr graph
+      foldl (\b a -> alt b (depthFirst { path: Cons curr path, visited: Set.insert curr visited, curr: a })) Nothing reachable

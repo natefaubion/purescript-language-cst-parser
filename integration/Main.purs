@@ -10,7 +10,7 @@ import Data.Either (Either(..), either)
 import Data.Filterable (partitionMap)
 import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
 import Data.Newtype (un)
 import Data.Number.Format as NF
@@ -20,7 +20,6 @@ import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
-import Data.Tuple (Tuple)
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -36,10 +35,7 @@ import Node.FS.Stats as FS
 import Node.Path (FilePath)
 import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
-import PureScript.CST.Parser (Recovered)
-import PureScript.CST.Parser as Parser
-import PureScript.CST.Parser.Monad (PositionedError, runParser)
-import PureScript.CST.TokenStream (TokenStream)
+import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module)
 import PureScript.CST.ModuleGraph (sortModules)
 
@@ -145,7 +141,7 @@ main = runAff_ (either throwException mempty) do
 
   let
     mods = Array.mapMaybe _.mbModule moduleResults
-    sorted = fromMaybe [] (sortModules mods)
+    sorted = either (\_ -> []) identity (sortModules mods)
 
   liftEffect $ Console.log $ "Sorted Module Graph for " <> show (Array.length sorted) <> " Modules"
 
@@ -216,10 +212,6 @@ parseModuleFromFile path = do
     , duration: durationMillis
     , printerMatches
     }
-
-parse :: TokenStream -> Either PositionedError (Tuple (Recovered Module) (Array PositionedError))
-parse tokenStream =
-  runParser tokenStream Parser.parseModule
 
 type DurationStats r =
   { minDuration :: Array { path :: FilePath, duration :: Milliseconds | r }
