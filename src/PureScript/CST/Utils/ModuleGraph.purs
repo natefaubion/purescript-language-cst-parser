@@ -7,6 +7,8 @@ import Prelude
 
 import Data.Array as Array
 import Data.Foldable (all, foldl)
+import Data.List (List(..))
+import Data.List as List
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
@@ -36,16 +38,16 @@ sortModules modules = do
 
     graph = moduleGraph modules
 
-  Array.mapMaybe (flip Map.lookup moduleNames) <$> topoSort graph
+  Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable <$> topoSort graph
 
-topoSort :: forall a. Ord a => Graph a -> Maybe (Array a)
+topoSort :: forall a. Ord a => Graph a -> Maybe (List a)
 topoSort graph = do
-  let mbResults = go (Just { roots: startingModules, sorted: [], usages: importCounts })
-  map (Array.reverse <<< _.sorted) mbResults
+  let mbResults = go (Just { roots: startingModules, sorted: Nil, usages: importCounts })
+  map _.sorted mbResults
   where
   go
-    :: Maybe { roots :: Set a, sorted :: Array a, usages :: Map a Int }
-    -> Maybe { roots :: Set a, sorted :: Array a, usages :: Map a Int }
+    :: Maybe { roots :: Set a, sorted :: List a, usages :: Map a Int }
+    -> Maybe { roots :: Set a, sorted :: List a, usages :: Map a Int }
   go = case _ of
     Nothing -> Nothing
     Just { roots, sorted, usages } -> case Set.findMin roots of
@@ -56,7 +58,7 @@ topoSort graph = do
           Nothing
       Just curr -> do
         let
-          sorted' = Array.snoc sorted curr
+          sorted' = Cons curr sorted
 
           reachable = fromMaybe Set.empty (Map.lookup curr graph)
 
