@@ -12,7 +12,7 @@ import Data.Foldable (for_)
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.Maybe (Maybe(..))
 import Data.Monoid.Additive (Additive(..))
-import Data.Newtype (un, unwrap)
+import Data.Newtype (un)
 import Data.Number.Format as NF
 import Data.String as Str
 import Data.String.CodeUnits as String
@@ -20,11 +20,7 @@ import Data.String.Regex as Regex
 import Data.String.Regex.Flags (noFlags)
 import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
-<<<<<<< HEAD
 import Data.Tuple (Tuple)
-=======
-import Data.Tuple (Tuple(..), snd)
->>>>>>> main
 import Effect (Effect)
 import Effect.AVar as EffectAVar
 import Effect.Aff (Aff, runAff_)
@@ -38,11 +34,7 @@ import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
-<<<<<<< HEAD
-import PureScript.CST (RecoveredParserResult(..), parseModule)
-=======
-import PureScript.CST (printModule)
->>>>>>> main
+import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Parser (Recovered)
 import PureScript.CST.Parser as Parser
@@ -187,11 +179,8 @@ type ModuleResult =
   { path :: FilePath
   , errors :: Array PositionedError
   , duration :: Milliseconds
-<<<<<<< HEAD
   , mbModule :: Maybe (Module Void)
-=======
   , printerMatches :: Maybe Boolean
->>>>>>> main
   }
 
 parseModuleFromFile :: FilePath -> Aff ModuleResult
@@ -203,7 +192,6 @@ parseModuleFromFile path = do
   let
     durationMillis = Milliseconds $ duration.seconds * 1000.0 + duration.nanos / 1000000.0
 
-<<<<<<< HEAD
     errors = case parsed of
       ParseSucceeded _ -> []
       ParseSucceededWithErrors _ errs -> NEA.toArray errs
@@ -213,12 +201,13 @@ parseModuleFromFile path = do
       ParseSucceeded mod -> Just mod
       ParseSucceededWithErrors _ _ -> Nothing
       ParseFailed _ -> Nothing
-=======
+
     printerMatches = case parsed of
-      Right (Tuple mod _) -> do
+      ParseSucceeded mod ->
         pure $ contents == printModule mod
-      _ -> Nothing
->>>>>>> main
+      ParseSucceededWithErrors mod _ ->
+        pure $ contents == printModule mod
+      ParseFailed _ -> Nothing
 
   pure
     { path
