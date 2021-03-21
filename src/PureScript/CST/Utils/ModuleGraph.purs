@@ -1,7 +1,6 @@
 module PureScript.CST.Utils.ModuleGraph
   ( moduleGraph
   , sortModules
-  , topoSort
   ) where
 
 import Prelude
@@ -51,7 +50,7 @@ sortModules modules = do
 
   Array.mapMaybe (flip Map.lookup moduleNames) sorted
 
-topoSort :: forall a. Show a => Ord a => Graph a -> Array a
+topoSort :: forall a. Ord a => Graph a -> Array a
 topoSort graph = do
   let { sorted } = runFree (un Identity) (go { roots: startingModules, sorted: [], usages: importCounts })
   Array.reverse sorted
