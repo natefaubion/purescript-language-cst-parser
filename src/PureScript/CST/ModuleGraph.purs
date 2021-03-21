@@ -43,14 +43,20 @@ sortModules modules = do
 
   bimap (Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable) (Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable) (topoSort graph)
 
+type TopoSortArgs a =
+  { roots :: Set a
+  , sorted :: List a
+  , usages :: Map a Int
+  }
+
 topoSort :: forall a. Ord a => Graph a -> Either (List a) (List a)
 topoSort graph = do
   let mbResults = go { roots: startingModules, sorted: Nil, usages: importCounts }
   map _.sorted mbResults
   where
   go
-    :: { roots :: Set a, sorted :: List a, usages :: Map a Int }
-    -> Either (List a) { roots :: Set a, sorted :: List a, usages :: Map a Int }
+    :: TopoSortArgs a
+    -> Either (List a) (TopoSortArgs a)
   go { roots, sorted, usages } = case Set.findMin roots of
     Nothing ->
       if all (eq 0) usages then
