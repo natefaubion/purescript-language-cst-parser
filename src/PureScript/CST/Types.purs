@@ -166,8 +166,8 @@ data Type e
   | TypeApp (Type e) (NonEmptyArray (Type e))
   | TypeOp (Type e) (NonEmptyArray (Tuple (QualifiedName Operator) (Type e)))
   | TypeOpName (QualifiedName Operator)
-  | TypeArr (Type e) SourceToken (Type e)
-  | TypeArrName SourceToken
+  | TypeArrow (Type e) SourceToken (Type e)
+  | TypeArrowName SourceToken
   | TypeConstrained (Type e) SourceToken (Type e)
   | TypeParens (Wrapped (Type e))
   | TypeUnaryRow SourceToken (Type e)
@@ -256,6 +256,8 @@ newtype ImportDecl e = ImportDecl
   , qualified :: Maybe (Tuple SourceToken (Name ModuleName))
   }
 
+derive instance newtypeImportDecl :: Newtype (ImportDecl e) _
+
 data Import e
   = ImportValue (Name Ident)
   | ImportOp (Name Operator)
@@ -275,6 +277,8 @@ newtype DataCtor e = DataCtor
   { name :: Name Proper
   , fields :: Array (Type e)
   }
+
+derive instance newtypeDataCtor :: Newtype (DataCtor e) _
 
 type ClassHead e =
   { keyword :: SourceToken
@@ -329,10 +333,14 @@ newtype GuardedExpr e = GuardedExpr
   , where :: Where e
   }
 
+derive instance newtypeGuardedExpr :: Newtype (GuardedExpr e) _
+
 newtype PatternGuard e = PatternGuard
   { binder :: Maybe (Tuple (Binder e) SourceToken)
   , expr :: Expr e
   }
+
+derive instance newtypePatternGuard :: Newtype (PatternGuard e) _
 
 data Foreign e
   = ForeignValue (Labeled (Name Ident) (Type e))
