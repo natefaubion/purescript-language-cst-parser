@@ -24,7 +24,7 @@ moduleGraph = Map.fromFoldable <<< map go
   go (Module { header: ModuleHeader { name: Name { name }, imports } }) =
     Tuple name (Set.fromFoldable (map getImportName imports))
 
-  getImportName (ImportDecl { module: Name { name } }) = name
+  getImportName (ImportDecl { "module": Name { name } }) = name
 
 sortModules :: forall e. Array (Module e) -> Maybe (Array (Module e))
 sortModules modules = do
