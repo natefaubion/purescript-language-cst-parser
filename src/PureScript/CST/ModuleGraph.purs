@@ -18,30 +18,30 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
 import Control.Alt (alt)
-import PureScript.CST.Types (ImportDecl(..), Module(..), ModuleHeader(..), ModuleName, Name(..))
+import PureScript.CST.Types (ImportDecl(..), ModuleHeader(..), ModuleName, Name(..))
 
 type Graph a = Map a (Set a)
 
-moduleGraph :: forall e. Array (Module e) -> Graph ModuleName
+moduleGraph :: forall e. Array (ModuleHeader e) -> Graph ModuleName
 moduleGraph = Map.fromFoldable <<< map go
   where
-  go (Module { header: ModuleHeader { name: Name { name }, imports } }) =
+  go (ModuleHeader { name: Name { name }, imports }) =
     Tuple name (Set.fromFoldable (map getImportName imports))
 
   getImportName (ImportDecl { "module": Name { name } }) = name
 
-sortModules :: forall e. Array (Module e) -> Either (Array (Module e)) (Array (Module e))
-sortModules modules = do
+sortModules :: forall e. Array (ModuleHeader e) -> Either (Array (ModuleHeader e)) (Array (ModuleHeader e))
+sortModules moduleHeaders = do
   let
-    moduleNames :: Map ModuleName (Module e)
-    moduleNames =
-      modules
-        # map (\mod@(Module { header: (ModuleHeader { name: Name { name } }) }) -> Tuple name mod)
+    knownModuleHeaders :: Map ModuleName (ModuleHeader e)
+    knownModuleHeaders =
+      moduleHeaders
+        # map (\header@(ModuleHeader { name: Name { name } }) -> Tuple name header)
         # Map.fromFoldable
 
-    graph = moduleGraph modules
+    graph = moduleGraph moduleHeaders
 
-  bimap (Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable) (Array.mapMaybe (flip Map.lookup moduleNames) <<< List.toUnfoldable) (topoSort graph)
+  bimap (Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable) (Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable) (topoSort graph)
 
 type TopoSortArgs a =
   { roots :: Set a

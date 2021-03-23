@@ -36,7 +36,7 @@ import Node.Path (FilePath)
 import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Parser.Monad (PositionedError)
-import PureScript.CST.Types (Module)
+import PureScript.CST.Types (Module(..), ModuleHeader)
 import PureScript.CST.ModuleGraph (sortModules)
 
 foreign import tmpdir :: String -> Effect String
@@ -175,7 +175,7 @@ type ModuleResult =
   { path :: FilePath
   , errors :: Array PositionedError
   , duration :: Milliseconds
-  , mbModule :: Maybe (Module Void)
+  , mbModule :: Maybe (ModuleHeader Void)
   , printerMatches :: Maybe Boolean
   }
 
@@ -194,7 +194,7 @@ parseModuleFromFile path = do
       ParseFailed err -> [ err ]
 
     mbModule = case parsed of
-      ParseSucceeded mod -> Just mod
+      ParseSucceeded (Module mod) -> Just mod.header
       ParseSucceededWithErrors _ _ -> Nothing
       ParseFailed _ -> Nothing
 
