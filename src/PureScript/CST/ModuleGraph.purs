@@ -19,7 +19,7 @@ import Data.Maybe (Maybe(..), fromMaybe, isJust, maybe)
 import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Tuple (Tuple(..))
+import Data.Tuple (Tuple(..), curry, uncurry)
 import Control.Monad.Free (Free, runFree)
 import PureScript.CST.Types (ImportDecl(..), ModuleHeader(..), ModuleName, Name(..))
 
@@ -63,12 +63,7 @@ topoSort graph = do
         Right { roots, sorted, usages }
       else do
         let
-          nonLeaf = Set.fromFoldable do
-            Tuple a count <- Map.toUnfoldable usages :: Array (Tuple a Int)
-            if count /= 0 && Map.lookup a graph /= Nothing && Map.lookup a graph /= Just (Set.empty) then
-              [ a ]
-            else
-              []
+          nonLeaf = Set.fromFoldable $ Map.keys $ Map.filterWithKey (\a count -> count /= 0 && Map.lookup a graph /= Nothing && Map.lookup a graph /= Just Set.empty) usages
 
         case foldl (\b a -> if isJust b then b else runFree (un Identity) (un Compose (depthFirst { path: Nil, visited: Set.empty, curr: a }))) Nothing nonLeaf of
           Just cycle -> Left cycle
@@ -93,11 +88,7 @@ topoSort graph = do
   decrementImport usages k = Map.insertWith add k (-1) usages
 
   startingModules :: Set a
-  startingModules =
-    importCounts
-      # Map.toUnfoldable
-      # Array.mapMaybe isRoot
-      # Set.fromFoldable
+  startingModules = Set.fromFoldable $ Map.keys $ Map.filterWithKey (\k v -> isJust (isRoot (Tuple k v))) importCounts
 
   importCounts :: Map a Int
   importCounts = Map.fromFoldableWith add do
