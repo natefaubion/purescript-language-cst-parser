@@ -56,9 +56,7 @@ topoSort :: forall a. Ord a => Graph a -> Either (List a) (List a)
 topoSort graph = do
   _.sorted <$> go { roots: startingModules, sorted: Nil, usages: importCounts }
   where
-  go
-    :: TopoSortArgs a
-    -> Either (List a) (TopoSortArgs a)
+  go :: TopoSortArgs a -> Either (List a) (TopoSortArgs a)
   go { roots, sorted, usages } = case Set.findMin roots of
     Nothing ->
       if all (eq 0) usages then
