@@ -113,7 +113,7 @@ topoSort graph = do
   depthFirst { path, visited, curr } =
     if Set.member curr visited then
       pure (Cons curr path)
-    else if Map.lookup curr graph == Just Set.empty || Map.lookup curr graph == Nothing then
+    else if maybe true Set.isEmpty (Map.lookup curr graph) then
       Compose $ pure Nothing
     else Compose $ pure $ do
       reachable <- Map.lookup curr graph
