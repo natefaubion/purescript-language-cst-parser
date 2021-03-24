@@ -43,8 +43,8 @@ sortModules moduleHeaders = do
         # Map.fromFoldable
 
     graph = moduleGraph moduleHeaders
-
-  bimap (Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable) (Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable) (topoSort graph)
+    lookupModuleHeaders = Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable
+  bimap lookupModuleHeaders lookupModuleHeaders (topoSort graph)
 
 type TopoSortArgs a =
   { roots :: Set a
