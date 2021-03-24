@@ -54,8 +54,7 @@ type TopoSortArgs a =
 
 topoSort :: forall a. Ord a => Graph a -> Either (List a) (List a)
 topoSort graph = do
-  let mbResults = go { roots: startingModules, sorted: Nil, usages: importCounts }
-  map _.sorted mbResults
+  _.sorted <$> go { roots: startingModules, sorted: Nil, usages: importCounts }
   where
   go
     :: TopoSortArgs a
