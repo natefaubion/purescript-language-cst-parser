@@ -37,7 +37,7 @@ import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module(..), ModuleHeader)
-import PureScript.CST.ModuleGraph (sortModules)
+import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 
 foreign import tmpdir :: String -> Effect String
 
@@ -141,9 +141,18 @@ main = runAff_ (either throwException mempty) do
 
   let
     mods = Array.mapMaybe _.mbModule moduleResults
-    sorted = either (\_ -> []) identity (sortModules mods)
 
-  liftEffect $ Console.log $ "Sorted Module Graph for " <> show (Array.length sorted) <> " Modules"
+  liftEffect case sortModules mods of
+    Sorted sorted -> Console.log $ Array.intercalate " "
+      [ "Successfully sorted module graph for"
+      , show (Array.length sorted)
+      , "of"
+      , show (Array.length partition.right)
+      , " successfully parsed modules."
+      ]
+    CycleDetected cycle -> Console.log $ Array.intercalate " "
+      [ "Error: cycle detected in module graph"
+      ]
 
 -- TODO: Upgrade packages ref to 0.14 package set
 defaultSpagoDhall :: String

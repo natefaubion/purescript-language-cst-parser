@@ -1,6 +1,7 @@
 module PureScript.CST.ModuleGraph
   ( moduleGraph
   , sortModules
+  , ModuleSort(..)
   ) where
 
 import Prelude
@@ -19,7 +20,7 @@ import Data.Maybe (Maybe(..), fromMaybe, isJust, maybe)
 import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.Tuple (Tuple(..), curry, uncurry)
+import Data.Tuple (Tuple(..))
 import Control.Monad.Free (Free, runFree)
 import PureScript.CST.Types (ImportDecl(..), ModuleHeader(..), ModuleName, Name(..))
 
@@ -33,7 +34,11 @@ moduleGraph = Map.fromFoldable <<< map go
 
   getImportName (ImportDecl { "module": Name { name } }) = name
 
-sortModules :: forall e. Array (ModuleHeader e) -> Either (Array (ModuleHeader e)) (Array (ModuleHeader e))
+data ModuleSort e
+  = Sorted (Array (ModuleHeader e))
+  | CycleDetected (Array (ModuleHeader e))
+
+sortModules :: forall e. Array (ModuleHeader e) -> ModuleSort e
 sortModules moduleHeaders = do
   let
     knownModuleHeaders :: Map ModuleName (ModuleHeader e)
@@ -44,7 +49,10 @@ sortModules moduleHeaders = do
 
     graph = moduleGraph moduleHeaders
     lookupModuleHeaders = Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable
-  bimap lookupModuleHeaders lookupModuleHeaders (topoSort graph)
+
+  case bimap lookupModuleHeaders lookupModuleHeaders (topoSort graph) of
+    Left cycle -> CycleDetected cycle
+    Right sorted -> Sorted sorted
 
 type TopoSortArgs a =
   { roots :: Set a
