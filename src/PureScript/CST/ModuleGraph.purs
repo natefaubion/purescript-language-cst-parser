@@ -9,15 +9,18 @@ import Data.Array as Array
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Foldable (all, foldl)
+import Data.Functor.Compose (Compose(..))
+import Data.Identity (Identity(..))
 import Data.List (List(..))
 import Data.List as List
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(..), fromMaybe, isJust, maybe)
+import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
-import Control.Alt (alt)
+import Control.Monad.Free (Free, runFree)
 import PureScript.CST.Types (ImportDecl(..), ModuleHeader(..), ModuleName, Name(..))
 
 type Graph a = Map a (Set a)
@@ -70,7 +73,7 @@ topoSort graph = do
             else
               []
 
-        case foldl (\b a -> alt b (depthFirst { path: Nil, visited: Set.empty, curr: a })) Nothing nonLeaf of
+        case foldl (\b a -> if isJust b then b else runFree (un Identity) (un Compose (depthFirst { path: Nil, visited: Set.empty, curr: a }))) Nothing nonLeaf of
           Just cycle -> Left cycle
           Nothing -> Left Nil
 
@@ -109,12 +112,12 @@ topoSort graph = do
   isRoot :: Tuple a Int -> Maybe a
   isRoot (Tuple a count) = if count == 0 then Just a else Nothing
 
-  depthFirst :: { path :: List a, visited :: Set a, curr :: a } -> Maybe (List a)
+  depthFirst :: { path :: List a, visited :: Set a, curr :: a } -> Compose (Free Identity) Maybe (List a)
   depthFirst { path, visited, curr } =
     if Set.member curr visited then
-      Just (Cons curr path)
+      pure (Cons curr path)
     else if Map.lookup curr graph == Just Set.empty || Map.lookup curr graph == Nothing then
-      Nothing
-    else do
+      Compose $ pure Nothing
+    else Compose $ pure $ do
       reachable <- Map.lookup curr graph
-      foldl (\b a -> alt b (depthFirst { path: Cons curr path, visited: Set.insert curr visited, curr: a })) Nothing reachable
+      foldl (\b a -> if isJust b then b else runFree (un Identity) (un Compose (depthFirst { path: Cons curr path, visited: Set.insert curr visited, curr: a }))) Nothing reachable
