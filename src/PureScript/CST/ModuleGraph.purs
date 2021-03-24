@@ -75,16 +75,12 @@ topoSort graph = do
           Nothing -> Left Nil
 
     Just curr -> do
-      let
-        sorted' = Cons curr sorted
-
-        reachable = fromMaybe Set.empty (Map.lookup curr graph)
-
-        usages' = foldl decrementImport usages reachable
-
-        roots' = foldl (appendRoots usages') (Set.delete curr roots) reachable
-
-      go { roots: roots', sorted: sorted', usages: usages' }
+      let reachable = fromMaybe Set.empty (Map.lookup curr graph)
+      go
+        { roots: foldl (appendRoots usages') (Set.delete curr roots) reachable
+        , sorted: Cons curr sorted
+        , usages: foldl decrementImport usages reachable
+        }
 
   appendRoots :: Map a Int -> Set a -> a -> Set a
   appendRoots usages roots curr = maybe roots (flip Set.insert roots) do
