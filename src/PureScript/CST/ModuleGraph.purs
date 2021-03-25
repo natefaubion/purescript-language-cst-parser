@@ -10,18 +10,14 @@ import Data.Array as Array
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Foldable (all, foldl)
-import Data.Functor.Compose (Compose(..))
-import Data.Identity (Identity(..))
 import Data.List (List(..))
 import Data.List as List
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe, isJust, maybe)
-import Data.Newtype (un)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
-import Control.Monad.Free (Free, runFree)
 import PureScript.CST.Types (ImportDecl(..), ModuleHeader(..), ModuleName, Name(..))
 
 type Graph a = Map a (Set a)
@@ -76,7 +72,9 @@ topoSort graph = do
               # Map.filterWithKey (\a count -> count > 0 && not (maybe true Set.isEmpty (Map.lookup a graph)))
               # Map.keys
 
-        case foldl (\b a -> if isJust b then b else runFree (un Identity) (un Compose (depthFirst { path: Nil, visited: Set.empty, curr: a }))) Nothing nonLeaf of
+          detectCycles = foldl (\b a -> if isJust b then b else depthFirst { path: Nil, visited: Set.empty, curr: a }) Nothing nonLeaf
+
+        case detectCycles of
           Just cycle -> Left cycle
           Nothing -> Left Nil
 
@@ -99,7 +97,7 @@ topoSort graph = do
   decrementImport usages k = Map.insertWith add k (-1) usages
 
   startingModules :: Set a
-  startingModules = Set.fromFoldable $ Map.keys $ Map.filterWithKey (\k v -> isJust (isRoot (Tuple k v))) importCounts
+  startingModules = Map.keys $ Map.filterWithKey (\k v -> isJust (isRoot (Tuple k v))) importCounts
 
   importCounts :: Map a Int
   importCounts = Map.fromFoldableWith add do
@@ -109,12 +107,12 @@ topoSort graph = do
   isRoot :: Tuple a Int -> Maybe a
   isRoot (Tuple a count) = if count == 0 then Just a else Nothing
 
-  depthFirst :: { path :: List a, visited :: Set a, curr :: a } -> Compose (Free Identity) Maybe (List a)
+  depthFirst :: { path :: List a, visited :: Set a, curr :: a } -> Maybe (List a)
   depthFirst { path, visited, curr } =
     if Set.member curr visited then
-      pure (Cons curr path)
+      Just (Cons curr path)
     else if maybe true Set.isEmpty (Map.lookup curr graph) then
-      Compose $ pure Nothing
-    else Compose $ pure $ do
+      Nothing
+    else do
       reachable <- Map.lookup curr graph
-      foldl (\b a -> if isJust b then b else runFree (un Identity) (un Compose (depthFirst { path: Cons curr path, visited: Set.insert curr visited, curr: a }))) Nothing reachable
+      foldl (\b a -> if isJust b then b else depthFirst { path: Cons curr path, visited: Set.insert curr visited, curr: a }) Nothing reachable
