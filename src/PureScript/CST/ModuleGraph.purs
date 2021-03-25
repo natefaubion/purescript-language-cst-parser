@@ -7,7 +7,6 @@ module PureScript.CST.ModuleGraph
 import Prelude
 
 import Data.Array as Array
-import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Foldable (all, foldl)
 import Data.List (List(..))
