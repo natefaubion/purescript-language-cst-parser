@@ -50,9 +50,9 @@ sortModules moduleHeaders = do
     graph = moduleGraph moduleHeaders
     lookupModuleHeaders = Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable
 
-  case bimap lookupModuleHeaders lookupModuleHeaders (topoSort graph) of
-    Left cycle -> CycleDetected cycle
-    Right sorted -> Sorted sorted
+  case topoSort graph of
+    Left cycle -> CycleDetected (lookupModuleHeaders cycle)
+    Right sorted -> Sorted (lookupModuleHeaders sorted)
 
 type TopoSortArgs a =
   { roots :: Set a
