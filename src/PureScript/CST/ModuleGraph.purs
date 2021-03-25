@@ -71,7 +71,10 @@ topoSort graph = do
         Right { roots, sorted, usages }
       else do
         let
-          nonLeaf = Set.fromFoldable $ Map.keys $ Map.filterWithKey (\a count -> count /= 0 && Map.lookup a graph /= Nothing && Map.lookup a graph /= Just Set.empty) usages
+          nonLeaf =
+            usages
+              # Map.filterWithKey (\a count -> count > 0 && not (maybe true Set.isEmpty (Map.lookup a graph)))
+              # Map.keys
 
         case foldl (\b a -> if isJust b then b else runFree (un Identity) (un Compose (depthFirst { path: Nil, visited: Set.empty, curr: a }))) Nothing nonLeaf of
           Just cycle -> Left cycle
