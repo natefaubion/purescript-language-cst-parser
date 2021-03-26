@@ -18,11 +18,12 @@ import Data.Either (Either(..))
 import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Prim hiding (Type)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered, parseModuleBody, parseModuleHeader)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (Parser, ParserResult(..), PositionedError, fromParserResult, initialParserState, runParser, runParser')
-import PureScript.CST.Types (ImportDecl, ModuleHeader, PSBinder, PSDeclaration, PSExpr, PSModule(..), PSType)
+import PureScript.CST.Types (Binder, Declaration, Expr, ImportDecl, Module(..), ModuleHeader, Type)
 import Unsafe.Coerce (unsafeCoerce)
 
 data RecoveredParserResult f
@@ -46,27 +47,27 @@ toRecoveredParserResult = case _ of
 runRecoveredParser :: forall a. Parser (Recovered a) -> String -> RecoveredParserResult a
 runRecoveredParser p = toRecoveredParserResult <<< flip runParser p <<< lex
 
-parseModule :: String -> RecoveredParserResult PSModule
+parseModule :: String -> RecoveredParserResult Module
 parseModule = runRecoveredParser Parser.parseModule
 
 parseImportDecl :: String -> RecoveredParserResult ImportDecl
 parseImportDecl = runRecoveredParser Parser.parseImportDecl
 
-parseDecl :: String -> RecoveredParserResult PSDeclaration
+parseDecl :: String -> RecoveredParserResult Declaration
 parseDecl = runRecoveredParser Parser.parseDecl
 
-parseExpr :: String -> RecoveredParserResult PSExpr
+parseExpr :: String -> RecoveredParserResult Expr
 parseExpr = runRecoveredParser Parser.parseExpr
 
-parseType :: String -> RecoveredParserResult PSType
+parseType :: String -> RecoveredParserResult Type
 parseType = runRecoveredParser Parser.parseType
 
-parseBinder :: String -> RecoveredParserResult PSBinder
+parseBinder :: String -> RecoveredParserResult Binder
 parseBinder = runRecoveredParser Parser.parseBinder
 
 newtype PartialModule e = PartialModule
   { header :: ModuleHeader e
-  , full :: Z.Lazy (RecoveredParserResult PSModule)
+  , full :: Z.Lazy (RecoveredParserResult Module)
   }
 
 parsePartialModule :: String -> RecoveredParserResult PartialModule
@@ -79,7 +80,7 @@ parsePartialModule src =
           , full: Z.defer \_ ->
               toRecoveredParserResult $ fromParserResult $ runParser' state do
                 body <- parseModuleBody
-                pure $ PSModule { header, body }
+                pure $ Module { header, body }
           }
       Right $ Tuple res state.errors
     ParseFail error position _ _ ->

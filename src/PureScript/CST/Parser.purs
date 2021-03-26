@@ -22,14 +22,16 @@ import Data.Maybe (Maybe(..), maybe)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
+import Prim as P
+import Prim hiding (Type, Row)
 import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
 import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (ClassFundep(..), DataCtor(..), DataMembers(..), Delimited, DoStatement(..), Export(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PSBinder(..), PSDeclaration(..), PSExpr(..), PSModule(..), PSRow(..), PSType(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Separated(..), SourceToken, Token(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
-type Recovered :: (Type -> Type) -> Type
+type Recovered :: (P.Type -> P.Type) -> P.Type
 type Recovered f = f RecoveredError
 
 type RecoveryStrategy f = Parser (Recovered f) -> Parser (Recovered f)
@@ -104,11 +106,11 @@ layout valueParser =
   tail = many (tokLayoutSep *> valueParser)
   go head = Array.cons head <$> tail
 
-parseModule :: Parser (Recovered PSModule)
+parseModule :: Parser (Recovered Module)
 parseModule = do
   header <- parseModuleHeader
   body <- parseModuleBody
-  pure $ PSModule { header, body }
+  pure $ Module { header, body }
 
 parseModuleHeader :: Parser (Recovered ModuleHeader)
 parseModuleHeader = do
@@ -128,7 +130,7 @@ parseModuleBody = do
 parseModuleImportDecls :: Parser (Array (Recovered ImportDecl))
 parseModuleImportDecls = many (parseImportDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
 
-parseModuleDecls :: Parser (Array (Recovered PSDeclaration))
+parseModuleDecls :: Parser (Array (Recovered Declaration))
 parseModuleDecls = many (recoverDecl parseDecl <* (tokLayoutSep <|> lookAhead tokLayoutEnd))
 
 parseExport :: Parser (Recovered Export)
@@ -163,7 +165,7 @@ parseDataMembers =
   DataAll <$> tokKeySymbol ".."
     <|> DataEnumerated <$> delimited tokLeftParen tokRightParen tokComma parseProper
 
-parseDecl :: Parser (Recovered PSDeclaration)
+parseDecl :: Parser (Recovered Declaration)
 parseDecl = do
   parseDeclData
     <|> parseDeclNewtype
@@ -175,20 +177,20 @@ parseDecl = do
     <|> parseDeclForeign
     <|> parseDeclFixity
 
-parseDeclKindSignature :: SourceToken -> Name Proper -> Parser (Recovered PSDeclaration)
+parseDeclKindSignature :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclKindSignature keyword label = do
   separator <- tokDoubleColon
   value <- parseType
   pure $ DeclKindSignature keyword $ Labeled { label, separator, value }
 
-parseDeclData :: Parser (Recovered PSDeclaration)
+parseDeclData :: Parser (Recovered Declaration)
 parseDeclData = do
   keyword <- tokKeyword "data"
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclData1 keyword name
 
-parseDeclData1 :: SourceToken -> Name Proper -> Parser (Recovered PSDeclaration)
+parseDeclData1 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclData1 keyword name = do
   vars <- many parseTypeVarBinding
   ctors <- optional (Tuple <$> tokEquals <*> separated tokPipe parseDataCtor)
@@ -200,14 +202,14 @@ parseDataCtor = ado
   fields <- many parseTypeAtom
   in DataCtor { name, fields }
 
-parseDeclNewtype :: Parser (Recovered PSDeclaration)
+parseDeclNewtype :: Parser (Recovered Declaration)
 parseDeclNewtype = do
   keyword <- tokKeyword "newtype"
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclNewtype1 keyword name
 
-parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Recovered PSDeclaration)
+parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclNewtype1 keyword name = do
   vars <- many parseTypeVarBinding
   tok <- tokEquals
@@ -215,26 +217,26 @@ parseDeclNewtype1 keyword name = do
   body <- parseTypeAtom
   pure $ DeclNewtype { keyword, name, vars } tok wrapper body
 
-parseDeclType :: Parser (Recovered PSDeclaration)
+parseDeclType :: Parser (Recovered Declaration)
 parseDeclType = do
   keyword <- tokKeyword "type"
   parseDeclRole keyword
     <|> parseDeclType1 keyword
 
-parseDeclType1 :: SourceToken -> Parser (Recovered PSDeclaration)
+parseDeclType1 :: SourceToken -> Parser (Recovered Declaration)
 parseDeclType1 keyword = do
   name <- parseProper
   parseDeclKindSignature keyword name
     <|> parseDeclType2 keyword name
 
-parseDeclType2 :: SourceToken -> Name Proper -> Parser (Recovered PSDeclaration)
+parseDeclType2 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclType2 keyword name = do
   vars <- many parseTypeVarBinding
   tok <- tokEquals
   body <- parseType
   pure $ DeclType { keyword, name, vars } tok body
 
-parseDeclRole :: SourceToken -> Parser (Recovered PSDeclaration)
+parseDeclRole :: SourceToken -> Parser (Recovered Declaration)
 parseDeclRole keyword1 = do
   keyword2 <- tokKeyword "role"
   name <- parseProper
@@ -247,19 +249,19 @@ parseRole =
     <|> flip Tuple Nominal <$> tokKeyword "nominal"
     <|> flip Tuple Phantom <$> tokKeyword "phantom"
 
-parseDeclClass :: Parser (Recovered PSDeclaration)
+parseDeclClass :: Parser (Recovered Declaration)
 parseDeclClass = do
   keyword <- tokKeyword "class"
   parseDeclClassSignature keyword
     <|> parseDeclClass1 keyword
 
-parseDeclClassSignature :: SourceToken -> Parser (Recovered PSDeclaration)
+parseDeclClassSignature :: SourceToken -> Parser (Recovered Declaration)
 parseDeclClassSignature keyword = do
   Tuple label separator <- try $ Tuple <$> parseProper <*> tokDoubleColon
   value <- parseType
   pure $ DeclKindSignature keyword $ Labeled { label, separator, value }
 
-parseDeclClass1 :: SourceToken -> Parser (Recovered PSDeclaration)
+parseDeclClass1 :: SourceToken -> Parser (Recovered Declaration)
 parseDeclClass1 keyword = do
   super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> tokLeftFatArrow
   name <- parseProper
@@ -268,12 +270,12 @@ parseDeclClass1 keyword = do
   members <- optional $ Tuple <$> tokKeyword "where" <*> layoutNonEmpty parseClassMember
   pure $ DeclClass { keyword, super, name, vars, fundeps } members
 
-parseClassConstraints :: Parser (Recovered PSType) -> Parser (OneOrDelimited (Recovered PSType))
+parseClassConstraints :: Parser (Recovered Type) -> Parser (OneOrDelimited (Recovered Type))
 parseClassConstraints parseOneConstraint = do
   Many <$> parens (separated tokComma parseType)
     <|> One <$> parseOneConstraint
 
-parseClassMember :: Parser (Labeled (Name Ident) (Recovered PSType))
+parseClassMember :: Parser (Labeled (Name Ident) (Recovered Type))
 parseClassMember = do
   label <- parseIdent
   separator <- tokDoubleColon
@@ -285,7 +287,7 @@ parseFundep =
   FundepDetermined <$> tokRightArrow <*> many1 parseIdent
     <|> FundepDetermines <$> many1 parseIdent <*> tokRightArrow <*> many1 parseIdent
 
-parseDeclInstanceChain :: Parser (Recovered PSDeclaration)
+parseDeclInstanceChain :: Parser (Recovered Declaration)
 parseDeclInstanceChain = DeclInstanceChain <$> separated parseInstanceChainSeparator parseInstance
 
 parseInstanceChainSeparator :: Parser SourceToken
@@ -325,7 +327,7 @@ parseInstanceBindingName name = do
   guarded <- parseGuarded (tokEquals)
   pure $ InstanceBindingName { name, binders, guarded }
 
-parseDeclDerive :: Parser (Recovered PSDeclaration)
+parseDeclDerive :: Parser (Recovered Declaration)
 parseDeclDerive = do
   derive_ <- tokKeyword "derive"
   newtype_ <- optional $ tokKeyword "newtype"
@@ -337,25 +339,25 @@ parseDeclDerive = do
   types <- many parseTypeAtom
   pure $ DeclDerive derive_ newtype_ { keyword, name, separator, constraints, className, types }
 
-parseDeclValue :: Parser (Recovered PSDeclaration)
+parseDeclValue :: Parser (Recovered Declaration)
 parseDeclValue = do
   ident <- parseIdent
   parseDeclSignature ident
     <|> parseDeclValue1 ident
 
-parseDeclSignature :: Name Ident -> Parser (Recovered PSDeclaration)
+parseDeclSignature :: Name Ident -> Parser (Recovered Declaration)
 parseDeclSignature label = do
   separator <- tokDoubleColon
   value <- parseType
   pure $ DeclSignature $ Labeled { label, separator, value }
 
-parseDeclValue1 :: Name Ident -> Parser (Recovered PSDeclaration)
+parseDeclValue1 :: Name Ident -> Parser (Recovered Declaration)
 parseDeclValue1 name = do
   binders <- many parseBinderAtom
   guarded <- parseGuarded tokEquals
   pure $ DeclValue { name, binders, guarded }
 
-parseDeclForeign :: Parser (Recovered PSDeclaration)
+parseDeclForeign :: Parser (Recovered Declaration)
 parseDeclForeign = do
   keyword1 <- tokKeyword "foreign"
   keyword2 <- tokKeyword "import"
@@ -380,7 +382,7 @@ parseForeignValue = do
   value <- parseType
   pure $ ForeignValue $ Labeled { label, separator, value }
 
-parseDeclFixity :: Parser (Recovered PSDeclaration)
+parseDeclFixity :: Parser (Recovered Declaration)
 parseDeclFixity = do
   keyword <- parseFixityKeyword
   prec <- parseInt
@@ -398,25 +400,25 @@ parseFixityOp =
   FixityType <$> tokKeyword "type" <*> parseQualifiedProper <*> tokKeyword "as" <*> parseOperator
     <|> FixityValue <$> parseQualifiedIdentOrProper <*> tokKeyword "as" <*> parseOperator
 
-parseType :: Parser (Recovered PSType)
+parseType :: Parser (Recovered Type)
 parseType = defer \_ -> do
   ty <- parseType1
   TypeKinded ty <$> tokDoubleColon <*> parseType
     <|> pure ty
 
-parseType1 :: Parser (Recovered PSType)
+parseType1 :: Parser (Recovered Type)
 parseType1 = defer \_ -> do
   parseForall
     <|> parseType2
 
-parseType2 :: Parser (Recovered PSType)
+parseType2 :: Parser (Recovered Type)
 parseType2 = defer \_ -> do
   ty <- parseType3
   TypeArr ty <$> tokRightArrow <*> parseType1
     <|> TypeConstrained ty <$> tokRightFatArrow <*> parseType1
     <|> pure ty
 
-parseType3 :: Parser (Recovered PSType)
+parseType3 :: Parser (Recovered Type)
 parseType3 = defer \_ -> do
   ty <- parseType4
   ops <- many (Tuple <$> parseQualifiedOperator <*> parseType4)
@@ -424,12 +426,12 @@ parseType3 = defer \_ -> do
     Nothing -> ty
     Just os -> TypeOp ty os
 
-parseType4 :: Parser (Recovered PSType)
+parseType4 :: Parser (Recovered Type)
 parseType4 = defer \_ ->
   TypeUnaryRow <$> tokKeyOperator "#" <*> parseType4
     <|> parseType5
 
-parseType5 :: Parser (Recovered PSType)
+parseType5 :: Parser (Recovered Type)
 parseType5 = defer \_ -> do
   ty <- parseTypeAtom
   args <- many parseTypeAtom
@@ -437,37 +439,37 @@ parseType5 = defer \_ -> do
     Nothing -> ty
     Just as -> TypeApp ty as
 
-parseTypeAtom :: Parser (Recovered PSType)
+parseTypeAtom :: Parser (Recovered Type)
 parseTypeAtom = defer \_ ->
   TypeVar <$> parseIdent
     <|> TypeConstructor <$> parseQualifiedProper
     <|> uncurry TypeString <$> parseString
     <|> parseTypeParens
-    <|> TypeRecord <$> braces parsePSRow
+    <|> TypeRecord <$> braces parseRow
     <|> TypeOpName <$> parseQualifiedSymbol
     <|> TypeHole <$> parseHole
     <|> TypeWildcard <$> tokUnderscore
     <|> TypeArrName <$> tokSymbolArrow
 
-parseTypeParens :: Parser (Recovered PSType)
+parseTypeParens :: Parser (Recovered Type)
 parseTypeParens = do
   open <- tokLeftParen
-  parsePSRowParen open
-    <|> parsePSRowTailParen open
+  parseRowParen open
+    <|> parseRowTailParen open
     <|> parseKindedVar open
     <|> parseTypeParen open
-    <|> parseEmptyPSRow open
+    <|> parseEmptyRow open
 
-parsePSRowParen :: SourceToken -> Parser (Recovered PSType)
-parsePSRowParen open = do
+parseRowParen :: SourceToken -> Parser (Recovered Type)
+parseRowParen open = do
   Tuple label separator <- try $ Tuple <$> parseLabel <*> tokDoubleColon
   value <- parseType
-  rest <- many (Tuple <$> tokComma <*> parsePSRowLabel)
+  rest <- many (Tuple <$> tokComma <*> parseRowLabel)
   tail <- optional $ Tuple <$> tokPipe <*> parseType
   close <- tokRightParen
   pure $ TypeRow $ Wrapped
     { open
-    , value: PSRow
+    , value: Row
         { labels: Just $ Separated
             { head: Labeled { label, separator, value }
             , tail: rest
@@ -477,26 +479,26 @@ parsePSRowParen open = do
     , close
     }
 
-parsePSRowTailParen :: SourceToken -> Parser (Recovered PSType)
-parsePSRowTailParen open = do
+parseRowTailParen :: SourceToken -> Parser (Recovered Type)
+parseRowTailParen open = do
   tail <- Tuple <$> tokPipe <*> parseType
   close <- tokRightParen
   pure $ TypeRow $ Wrapped
     { open
-    , value: PSRow { labels: Nothing, tail: Just tail }
+    , value: Row { labels: Nothing, tail: Just tail }
     , close
     }
 
-parseEmptyPSRow :: SourceToken -> Parser (Recovered PSType)
-parseEmptyPSRow open = do
+parseEmptyRow :: SourceToken -> Parser (Recovered Type)
+parseEmptyRow open = do
   close <- tokRightParen
   pure $ TypeRow $ Wrapped
     { open
-    , value: PSRow { labels: Nothing, tail: Nothing }
+    , value: Row { labels: Nothing, tail: Nothing }
     , close
     }
 
-parseKindedVar :: SourceToken -> Parser (Recovered PSType)
+parseKindedVar :: SourceToken -> Parser (Recovered Type)
 parseKindedVar open = do
   Tuple var separator <- try $ Tuple <$> parens (TypeVar <$> parseIdent) <*> tokDoubleColon
   kind <- parseType
@@ -507,26 +509,26 @@ parseKindedVar open = do
     , close
     }
 
-parseTypeParen :: SourceToken -> Parser (Recovered PSType)
+parseTypeParen :: SourceToken -> Parser (Recovered Type)
 parseTypeParen open = do
   value <- parseType1
   close <- tokRightParen
   pure $ TypeParens $ Wrapped { open, value, close }
 
-parsePSRow :: Parser (Recovered PSRow)
-parsePSRow = defer \_ -> do
-  labels <- optional $ separated tokComma parsePSRowLabel
+parseRow :: Parser (Recovered Row)
+parseRow = defer \_ -> do
+  labels <- optional $ separated tokComma parseRowLabel
   tail <- optional $ Tuple <$> tokPipe <*> parseType
-  pure $ PSRow { labels, tail }
+  pure $ Row { labels, tail }
 
-parsePSRowLabel :: Parser (Labeled (Name Label) (Recovered PSType))
-parsePSRowLabel = do
+parseRowLabel :: Parser (Labeled (Name Label) (Recovered Type))
+parseRowLabel = do
   label <- parseLabel
   separator <- tokDoubleColon
   value <- parseType
   pure $ Labeled { label, separator, value }
 
-parseForall :: Parser (Recovered PSType)
+parseForall :: Parser (Recovered Type)
 parseForall = defer \_ ->
   TypeForall
     <$> tokForall
@@ -546,13 +548,13 @@ parseTypeVarKinded = TypeVarKinded <$> parens do
   value <- parseType
   pure $ Labeled { label, separator, value }
 
-parseExpr :: Parser (Recovered PSExpr)
+parseExpr :: Parser (Recovered Expr)
 parseExpr = defer \_ -> do
   expr <- parseExpr1
   ExprTyped expr <$> tokDoubleColon <*> parseType
     <|> pure expr
 
-parseExpr1 :: Parser (Recovered PSExpr)
+parseExpr1 :: Parser (Recovered Expr)
 parseExpr1 = defer \_ -> do
   expr <- parseExpr2
   ops <- many (Tuple <$> parseQualifiedOperator <*> parseExpr2)
@@ -560,7 +562,7 @@ parseExpr1 = defer \_ -> do
     Nothing -> expr
     Just os -> ExprOp expr os
 
-parseExpr2 :: Parser (Recovered PSExpr)
+parseExpr2 :: Parser (Recovered Expr)
 parseExpr2 = defer \_ -> do
   expr <- parseExpr3
   ops <- many (Tuple <$> parseTickExpr <*> parseExpr)
@@ -568,14 +570,14 @@ parseExpr2 = defer \_ -> do
     Nothing -> expr
     Just os -> ExprInfix expr os
 
-parseTickExpr :: Parser (Wrapped (Recovered PSExpr))
+parseTickExpr :: Parser (Wrapped (Recovered Expr))
 parseTickExpr = do
   open <- tokTick
   value <- parseTickExpr1
   close <- tokTick
   pure $ Wrapped { open, value, close }
 
-parseTickExpr1 :: Parser (Recovered PSExpr)
+parseTickExpr1 :: Parser (Recovered Expr)
 parseTickExpr1 = defer \_ -> do
   expr <- parseExpr3
   ops <- many (Tuple <$> parseQualifiedOperator <*> parseExpr3)
@@ -583,12 +585,12 @@ parseTickExpr1 = defer \_ -> do
     Nothing -> expr
     Just os -> ExprOp expr os
 
-parseExpr3 :: Parser (Recovered PSExpr)
+parseExpr3 :: Parser (Recovered Expr)
 parseExpr3 = defer \_ -> do
   ExprNegate <$> tokKeyOperator "-" <*> parseExpr3
     <|> parseExpr4
 
-parseExpr4 :: Parser (Recovered PSExpr)
+parseExpr4 :: Parser (Recovered Expr)
 parseExpr4 = defer \_ -> do
   expr <- parseExpr5
   args <- many parseExpr5
@@ -596,7 +598,7 @@ parseExpr4 = defer \_ -> do
     Nothing -> expr
     Just as -> ExprApp expr as
 
-parseExpr5 :: Parser (Recovered PSExpr)
+parseExpr5 :: Parser (Recovered Expr)
 parseExpr5 = defer \_ ->
   parseIf
     <|> parseLetIn
@@ -606,7 +608,7 @@ parseExpr5 = defer \_ ->
     <|> parseAdo
     <|> parseExpr6
 
-parseIf :: Parser (Recovered PSExpr)
+parseIf :: Parser (Recovered Expr)
 parseIf = do
   keyword <- tokKeyword "if"
   cond <- parseExpr
@@ -616,7 +618,7 @@ parseIf = do
   false_ <- parseExpr
   pure $ ExprIf { keyword, cond, then: then_, true: true_, else: else_, false: false_ }
 
-parseLetIn :: Parser (Recovered PSExpr)
+parseLetIn :: Parser (Recovered Expr)
 parseLetIn = do
   keyword <- tokKeyword "let"
   bindings <- layoutNonEmpty (recoverLetBinding parseLetBinding)
@@ -624,7 +626,7 @@ parseLetIn = do
   body <- parseExpr
   pure $ ExprLet { keyword, bindings, in: in_, body }
 
-parseLambda :: Parser (Recovered PSExpr)
+parseLambda :: Parser (Recovered Expr)
 parseLambda = do
   symbol <- tokBackslash
   binders <- many1 parseBinderAtom
@@ -632,7 +634,7 @@ parseLambda = do
   body <- parseExpr
   pure $ ExprLambda { symbol, binders, arrow, body }
 
-parseCase :: Parser (Recovered PSExpr)
+parseCase :: Parser (Recovered Expr)
 parseCase = do
   keyword <- tokKeyword "case"
   head <- separated tokComma parseExpr
@@ -640,34 +642,34 @@ parseCase = do
   branches <- try parseBadSingleCaseBranch <|> parseCaseBranches
   pure $ ExprCase { keyword, head, of: of_, branches }
 
-parseCaseBranches :: Parser (NonEmptyArray (Tuple (Separated (Recovered PSBinder)) (Recovered Guarded)))
+parseCaseBranches :: Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseCaseBranches = defer \_ ->
   layoutNonEmpty $ Tuple <$> separated tokComma parseBinder1 <*> parseGuarded tokRightArrow
 
-parseBadSingleCaseBranch :: Parser (NonEmptyArray (Tuple (Separated (Recovered PSBinder)) (Recovered Guarded)))
+parseBadSingleCaseBranch :: Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseBadSingleCaseBranch = do
   binder <- tokLayoutStart *> parseBinder1
   parseBadSingleCaseWhere binder
     <|> parseBadSingleCaseGuarded binder
 
-parseBadSingleCaseWhere :: Recovered PSBinder -> Parser (NonEmptyArray (Tuple (Separated (Recovered PSBinder)) (Recovered Guarded)))
+parseBadSingleCaseWhere :: Recovered Binder -> Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseBadSingleCaseWhere binder = do
   arrow <- tokRightArrow
   body <- tokLayoutEnd *> parseWhere
   pure $ NonEmptyArray.singleton $ Tuple (Separated { head: binder, tail: [] }) $ Unconditional arrow body
 
-parseBadSingleCaseGuarded :: Recovered PSBinder -> Parser (NonEmptyArray (Tuple (Separated (Recovered PSBinder)) (Recovered Guarded)))
+parseBadSingleCaseGuarded :: Recovered Binder -> Parser (NonEmptyArray (Tuple (Separated (Recovered Binder)) (Recovered Guarded)))
 parseBadSingleCaseGuarded binder = do
   body <- tokLayoutEnd *> parseGuarded tokRightArrow
   pure $ NonEmptyArray.singleton $ Tuple (Separated { head: binder, tail: [] }) body
 
-parseDo :: Parser (Recovered PSExpr)
+parseDo :: Parser (Recovered Expr)
 parseDo = do
   keyword <- tokQualifiedKeyword "do"
   statements <- layoutNonEmpty (recoverDoStatement parseDoStatement)
   pure $ ExprDo { keyword, statements }
 
-parseAdo :: Parser (Recovered PSExpr)
+parseAdo :: Parser (Recovered Expr)
 parseAdo = do
   keyword <- tokQualifiedKeyword "ado"
   statements <- layout (recoverDoStatement parseDoStatement)
@@ -675,13 +677,13 @@ parseAdo = do
   result <- parseExpr
   pure $ ExprAdo { keyword, statements, in: in_, result }
 
-parseExpr6 :: Parser (Recovered PSExpr)
+parseExpr6 :: Parser (Recovered Expr)
 parseExpr6 = defer \_ -> do
   expr <- parseExpr7
   parseRecordUpdates expr
     <|> pure expr
 
-parseRecordUpdates :: Recovered PSExpr -> Parser (Recovered PSExpr)
+parseRecordUpdates :: Recovered Expr -> Parser (Recovered Expr)
 parseRecordUpdates expr = do
   open <- try $ tokLeftBrace <* lookAhead (parseLabel *> (tokEquals <|> tokLeftBrace))
   value <- separated tokComma parseRecordUpdate
@@ -705,19 +707,19 @@ parseRecordUpdateBranch label =
   RecordUpdateBranch label
     <$> braces (separated tokComma parseRecordUpdate)
 
-parseExpr7 :: Parser (Recovered PSExpr)
+parseExpr7 :: Parser (Recovered Expr)
 parseExpr7 = defer \_ -> do
   expr <- parseExprAtom
   parseRecordAccessor expr
     <|> pure expr
 
-parseRecordAccessor :: Recovered PSExpr -> Parser (Recovered PSExpr)
+parseRecordAccessor :: Recovered Expr -> Parser (Recovered Expr)
 parseRecordAccessor expr = do
   dot <- tokDot
   path <- separated tokDot parseLabel
   pure $ ExprRecordAccessor { expr, dot, path }
 
-parseExprAtom :: Parser (Recovered PSExpr)
+parseExprAtom :: Parser (Recovered Expr)
 parseExprAtom = defer \_ ->
   ExprIdent <$> parseQualifiedIdent
     <|> ExprConstructor <$> parseQualifiedProper
@@ -798,13 +800,13 @@ parseWhere = defer \_ -> do
   bindings <- optional (Tuple <$> tokKeyword "where" <*> layoutNonEmpty (recoverLetBinding parseLetBinding))
   pure $ Where { expr, bindings }
 
-parseBinder :: Parser (Recovered PSBinder)
+parseBinder :: Parser (Recovered Binder)
 parseBinder = defer \_ -> do
   binder <- parseBinder1
   BinderTyped binder <$> tokDoubleColon <*> parseType
     <|> pure binder
 
-parseBinder1 :: Parser (Recovered PSBinder)
+parseBinder1 :: Parser (Recovered Binder)
 parseBinder1 = defer \_ -> do
   binder <- parseBinder2
   ops <- many (Tuple <$> parseQualifiedOperator <*> parseBinder2)
@@ -812,25 +814,25 @@ parseBinder1 = defer \_ -> do
     Nothing -> binder
     Just os -> BinderOp binder os
 
-parseBinder2 :: Parser (Recovered PSBinder)
+parseBinder2 :: Parser (Recovered Binder)
 parseBinder2 = defer \_ ->
   parseBinderNegative
     <|> parseBinderConstructor
     <|> parseBinderAtom
 
-parseBinderNegative :: Parser (Recovered PSBinder)
+parseBinderNegative :: Parser (Recovered Binder)
 parseBinderNegative =  do
   negative <- tokKeyOperator "-"
   uncurry (BinderInt (Just negative)) <$> parseInt
     <|> uncurry (BinderNumber (Just negative)) <$> parseNumber
 
-parseBinderConstructor :: Parser (Recovered PSBinder)
+parseBinderConstructor :: Parser (Recovered Binder)
 parseBinderConstructor = defer \_ -> do
   name <- parseQualifiedProper
   apps <- many parseBinderAtom
   pure $ BinderConstructor name apps
 
-parseBinderAtom :: Parser (Recovered PSBinder)
+parseBinderAtom :: Parser (Recovered Binder)
 parseBinderAtom = defer \_ ->
   parseIdentBinder
     <|> flip BinderConstructor [] <$> parseQualifiedProper
@@ -844,7 +846,7 @@ parseBinderAtom = defer \_ ->
     <|> BinderRecord <$> delimited tokLeftBrace tokRightBrace tokComma (parseRecordLabeled parseBinder)
     <|> BinderParens <$> parens parseBinder
 
-parseIdentBinder :: Parser (Recovered PSBinder)
+parseIdentBinder :: Parser (Recovered Binder)
 parseIdentBinder = do
   ident <- parseIdent
   BinderNamed ident <$> tokAt <*> parseBinderAtom
@@ -1162,7 +1164,7 @@ recoverTokensWhile p initStream = go [] initStream
       else
         Recovery acc tok.range.start stream
 
-recoverDecl :: RecoveryStrategy PSDeclaration
+recoverDecl :: RecoveryStrategy Declaration
 recoverDecl = recoverIndent DeclError
 
 recoverLetBinding :: RecoveryStrategy LetBinding

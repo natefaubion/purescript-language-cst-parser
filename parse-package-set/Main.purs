@@ -39,7 +39,7 @@ import PureScript.CST.Parser (Recovered)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (PositionedError, runParser)
 import PureScript.CST.TokenStream (TokenStream)
-import PureScript.CST.Types (PSModule)
+import PureScript.CST.Types (Module)
 
 foreign import tmpdir :: String -> Effect String
 
@@ -151,7 +151,7 @@ parseModuleFromFile path = do
     , duration: durationMillis
     }
 
-parse :: TokenStream -> Either PositionedError (Tuple (Recovered PSModule) (Array PositionedError))
+parse :: TokenStream -> Either PositionedError (Tuple (Recovered Module) (Array PositionedError))
 parse tokenStream =
   runParser tokenStream Parser.parseModule
 
