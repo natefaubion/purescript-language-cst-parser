@@ -41,17 +41,17 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Traversal (foldMapModule, defaultMonoidalVisitor)
-import PureScript.CST.Types (Ident, ModuleName, PSExpr(..), PSModule, QualifiedName(..), SourceRange)
+import PureScript.CST.Types as CST
 
-type QualifiedIdent = Tuple (Maybe ModuleName) Ident
-type UsageMap = SemigroupMap QualifiedIdent (Set SourceRange)
+type QualifiedIdent = Tuple (Maybe CST.ModuleName) CST.Ident
+type UsageMap = SemigroupMap QualifiedIdent (Set CST.SourceRange)
 
-getExprIdents :: forall a. PSModule a -> UsageMap
+getExprIdents :: forall a. CST.Module a -> UsageMap
 getExprIdents = foldMapModule $ defaultMonoidalVisitor
   { onExpr = case _ of
-      ExprIdent (QualifiedName ident) ->
+      CST.ExprIdent (CST.QualifiedName ident) ->
         SemigroupMap
-          $ Map.singleton (Tuple ident.module ident.name)
+          $ Map.singleton (Tuple ident."module" ident.name)
           $ Set.singleton ident.token.range
       _ -> mempty
   }
