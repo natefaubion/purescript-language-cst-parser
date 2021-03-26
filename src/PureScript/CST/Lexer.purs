@@ -6,10 +6,10 @@ module PureScript.CST.Lexer
 import Prelude
 
 import Control.Alt (class Alt, (<|>))
-import Data.Array (fold, foldMap, foldl)
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Char as Char
+import Data.Foldable (fold, foldl, foldMap)
 import Data.Int (hexadecimal)
 import Data.Int as Int
 import Data.Lazy as Lazy

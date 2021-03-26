@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      
+
       - uses: purescript-contrib/setup-purescript@main
         with:
-          purescript: "0.13.8"
+          purescript: "0.14.0"
           spago: "0.19.0"
           psa: "0.8.2"
 
