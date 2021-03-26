@@ -109,6 +109,7 @@ import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), curry, uncurry)
 import Prim as P
+import Prim hiding (Row, Type)
 import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor(..), DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr(..), IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard(..), RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where(..), Wrapped(..))
 import Type.Row (type (+))
 
