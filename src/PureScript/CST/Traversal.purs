@@ -295,7 +295,7 @@ traverseType k = case _ of
   TypeKinded typ1 tok typ2 -> TypeKinded <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeApp typ args -> TypeApp <$> k.onType typ <*> traverse k.onType args
   TypeOp typ ops -> TypeOp <$> k.onType typ <*> traverse (traverse k.onType) ops
-  TypeArr typ1 tok typ2 -> TypeArr <$> k.onType typ1 <@> tok <*> k.onType typ2
+  TypeArrow typ1 tok typ2 -> TypeArrow <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeConstrained typ1 tok typ2 -> TypeConstrained <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeParens wrapped -> TypeParens <$> traverseWrapped k.onType wrapped
   TypeUnaryRow tok typ -> TypeUnaryRow tok <$> k.onType typ

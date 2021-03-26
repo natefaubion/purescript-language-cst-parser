@@ -118,8 +118,8 @@ instance rangeOfLabeled :: (RangeOf a, RangeOf b) => RangeOf (Labeled a b) where
     }
 
 instance tokensOfLabeled :: (TokensOf a, TokensOf b) => TokensOf (Labeled a b) where
-  tokensOf (Labeled { label, value }) =
-    tokensOf label <> tokensOf value
+  tokensOf (Labeled { label, separator, value }) =
+    tokensOf label <> singleton separator <> tokensOf value
 
 instance rangeOfOneOrDelimited :: RangeOf a => RangeOf (OneOrDelimited a) where
   rangeOf = case _ of
@@ -165,11 +165,11 @@ instance rangeOfType :: RangeOf e => RangeOf (Type e) where
       }
     TypeOpName n ->
       rangeOf n
-    TypeArr ty1 _ ty2 ->
+    TypeArrow ty1 _ ty2 ->
       { start: (rangeOf ty1).start
       , end: (rangeOf ty2).end
       }
-    TypeArrName t ->
+    TypeArrowName t ->
       t.range
     TypeConstrained ty1 _ ty2 ->
       { start: (rangeOf ty1).start
@@ -216,10 +216,10 @@ instance tokensOfType :: TokensOf e => TokensOf (Type e) where
         <> defer \_ -> foldMap (\(Tuple op arg) -> tokensOf op <> tokensOf arg) ops
     TypeOpName n ->
       tokensOf n
-    TypeArr ty1 t ty2 ->
+    TypeArrow ty1 t ty2 ->
       tokensOf ty1
         <> defer \_ -> singleton t <> tokensOf ty2
-    TypeArrName t ->
+    TypeArrowName t ->
       singleton t
     TypeConstrained ty1 t ty2 ->
       tokensOf ty1
@@ -802,7 +802,7 @@ instance tokensOfExpr :: TokensOf e => TokensOf (Expr e) where
     ExprRecordUpdate expr upds ->
       tokensOf expr <> defer \_ -> tokensOf upds
     ExprApp expr exprs ->
-      tokensOf expr <> defer \_ -> tokensOf expr
+      tokensOf expr <> defer \_ -> tokensOf exprs
     ExprLambda { symbol, binders, arrow, body } ->
       cons symbol $ defer \_ ->
         tokensOf binders

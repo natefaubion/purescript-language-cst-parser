@@ -441,6 +441,8 @@ token =
             TokPipe
           "@" ->
             TokAt
+          "`" ->
+            TokTick
           _ ->
             TokOperator Nothing symbol
       moduleName ->

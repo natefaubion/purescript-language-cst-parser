@@ -8,6 +8,7 @@ module PureScript.CST
   , parseExpr
   , parseType
   , parseBinder
+  , printModule
   ) where
 
 import Prelude
@@ -15,14 +16,19 @@ import Prelude
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
+import Data.Foldable (foldMap)
 import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
+import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
 import Prim hiding (Type)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered, parseModuleBody, parseModuleHeader)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (Parser, ParserResult(..), PositionedError, fromParserResult, initialParserState, runParser, runParser')
+import PureScript.CST.Print as Print
+import PureScript.CST.Range (class TokensOf, tokensOf)
+import PureScript.CST.Range.TokenList as TokenList
 import PureScript.CST.Types (Binder, Declaration, Expr, ImportDecl, Module(..), ModuleHeader, Type)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -85,3 +91,8 @@ parsePartialModule src =
       Right $ Tuple res state.errors
     ParseFail error position _ _ ->
       Left { error, position }
+
+printModule :: forall e. TokensOf e => Module e -> String
+printModule mod =
+  foldMap Print.printSourceToken (TokenList.toArray (tokensOf mod))
+    <> foldMap (Print.printComment Print.printLineFeed) (unwrap (unwrap mod).body).trailingComments
