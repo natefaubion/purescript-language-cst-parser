@@ -142,7 +142,7 @@ main = runAff_ (either throwException mempty) do
   let
     mods = Array.mapMaybe _.mbModule moduleResults
 
-  liftEffect case sortModules mods of
+  liftEffect case sortModules identity mods of
     Sorted sorted -> Console.log $ Array.intercalate " "
       [ "Successfully sorted module graph for"
       , show (Array.length sorted)

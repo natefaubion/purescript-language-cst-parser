@@ -21,28 +21,31 @@ import PureScript.CST.Types (ImportDecl(..), ModuleHeader(..), ModuleName, Name(
 
 type Graph a = Map a (Set a)
 
-moduleGraph :: forall e. Array (ModuleHeader e) -> Graph ModuleName
-moduleGraph = Map.fromFoldable <<< map go
+moduleGraph :: forall e a. (a -> ModuleHeader e) -> Array a -> Graph ModuleName
+moduleGraph k = Map.fromFoldable <<< map (go <<< k)
   where
   go (ModuleHeader { name: Name { name }, imports }) =
     Tuple name (Set.fromFoldable (map getImportName imports))
 
   getImportName (ImportDecl { "module": Name { name } }) = name
 
-data ModuleSort e
-  = Sorted (Array (ModuleHeader e))
-  | CycleDetected (Array (ModuleHeader e))
+data ModuleSort a
+  = Sorted (Array a)
+  | CycleDetected (Array a)
 
-sortModules :: forall e. Array (ModuleHeader e) -> ModuleSort e
-sortModules moduleHeaders = do
+sortModules :: forall e a. (a -> ModuleHeader e) -> Array a -> ModuleSort a
+sortModules k moduleHeaders = do
   let
-    knownModuleHeaders :: Map ModuleName (ModuleHeader e)
+    getModuleName :: ModuleHeader e -> ModuleName
+    getModuleName (ModuleHeader { name: Name { name } }) = name
+
+    knownModuleHeaders :: Map ModuleName a
     knownModuleHeaders =
       moduleHeaders
-        # map (\header@(ModuleHeader { name: Name { name } }) -> Tuple name header)
+        # map (\a -> Tuple (getModuleName (k a)) a)
         # Map.fromFoldable
 
-    graph = moduleGraph moduleHeaders
+    graph = moduleGraph k moduleHeaders
     lookupModuleHeaders = Array.mapMaybe (flip Map.lookup knownModuleHeaders) <<< List.toUnfoldable
 
   case topoSort graph of
