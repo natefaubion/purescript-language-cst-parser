@@ -9,9 +9,11 @@ module PureScript.CST
   , parseType
   , parseBinder
   , printModule
+  , toRecovered
   ) where
 
 import Prelude
+import Prim hiding (Type)
 
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
@@ -21,7 +23,6 @@ import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
-import Prim hiding (Type)
 import PureScript.CST.Lexer (lex)
 import PureScript.CST.Parser (Recovered, parseModuleBody, parseModuleHeader)
 import PureScript.CST.Parser as Parser
@@ -49,6 +50,9 @@ toRecoveredParserResult = case _ of
         ParseSucceeded ((unsafeCoerce :: Recovered f -> f Void) res)
   Left err ->
     ParseFailed err
+
+toRecovered :: forall f. f Void -> Recovered f
+toRecovered = unsafeCoerce
 
 runRecoveredParser :: forall a. Parser (Recovered a) -> String -> RecoveredParserResult a
 runRecoveredParser p = toRecoveredParserResult <<< flip runParser p <<< lex
