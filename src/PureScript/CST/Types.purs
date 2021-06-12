@@ -294,8 +294,8 @@ data ClassFundep
 
 type InstanceHead e =
   { keyword :: SourceToken
-  , name :: Name Ident
-  , separator :: SourceToken
+  , name :: Maybe (Name Ident)
+  , separator :: Maybe (SourceToken)
   , constraints :: Maybe (Tuple (OneOrDelimited (Type e)) SourceToken)
   , className :: QualifiedName Proper
   , types :: Array (Type e)

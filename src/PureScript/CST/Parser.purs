@@ -298,8 +298,8 @@ parseInstanceChainSeparator =
 parseInstance :: Parser (Recovered Instance)
 parseInstance = do
   keyword <- tokKeyword "instance"
-  name <- parseIdent
-  separator <- tokDoubleColon
+  name <- optional parseIdent
+  separator <- optional tokDoubleColon
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> tokRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
@@ -332,8 +332,8 @@ parseDeclDerive = do
   derive_ <- tokKeyword "derive"
   newtype_ <- optional $ tokKeyword "newtype"
   keyword <- tokKeyword "instance"
-  name <- parseIdent
-  separator <- tokDoubleColon
+  name <- optional parseIdent
+  separator <- optional tokDoubleColon
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> tokRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
@@ -511,7 +511,7 @@ parseKindedVar open = do
 
 parseTypeParen :: SourceToken -> Parser (Recovered Type)
 parseTypeParen open = do
-  value <- parseType1
+  value <- parseType
   close <- tokRightParen
   pure $ TypeParens $ Wrapped { open, value, close }
 
