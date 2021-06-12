@@ -11,6 +11,7 @@ module PureScript.CST.Parser
   ) where
 
 import Prelude
+import Prim hiding (Type, Row)
 
 import Control.Alt (alt)
 import Control.Lazy (defer)
@@ -23,13 +24,12 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import Prim as P
-import Prim hiding (Type, Row)
 import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
 import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..), InstanceNameAndSeparator)
 
 type Recovered :: (P.Type -> P.Type) -> P.Type
 type Recovered f = f RecoveredError
@@ -298,14 +298,13 @@ parseInstanceChainSeparator =
 parseInstance :: Parser (Recovered Instance)
 parseInstance = do
   keyword <- tokKeyword "instance"
-  name <- optional parseIdent
-  separator <- optional tokDoubleColon
+  nameAndSeparator <- optional parseInstanceNameAndSeparator
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> tokRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
   body <- optional $ Tuple <$> tokKeyword "where" <*> layoutNonEmpty parseInstanceBinding
   pure $ Instance
-    { head: { keyword, name, separator, constraints, className, types }
+    { head: { keyword, nameAndSeparator, constraints, className, types }
     , body
     }
 
@@ -332,12 +331,18 @@ parseDeclDerive = do
   derive_ <- tokKeyword "derive"
   newtype_ <- optional $ tokKeyword "newtype"
   keyword <- tokKeyword "instance"
-  name <- optional parseIdent
+  nameAndSeparator <- optional parseInstanceNameAndSeparator
   separator <- optional tokDoubleColon
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> tokRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
-  pure $ DeclDerive derive_ newtype_ { keyword, name, separator, constraints, className, types }
+  pure $ DeclDerive derive_ newtype_ { keyword, nameAndSeparator, constraints, className, types }
+
+parseInstanceNameAndSeparator :: Parser InstanceNameAndSeparator
+parseInstanceNameAndSeparator = do
+  name <- parseIdent
+  separator <- tokDoubleColon
+  pure $ { name, separator }
 
 parseDeclValue :: Parser (Recovered Declaration)
 parseDeclValue = do

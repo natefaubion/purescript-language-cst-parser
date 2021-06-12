@@ -513,8 +513,8 @@ instance tokensOfDecl :: TokensOf e => TokensOf (Declaration e) where
       cons keyword $ defer \_ ->
         foldMap singleton tok
           <> singleton inst.keyword
-          <> foldMap tokensOf inst.name
-          <> foldMap singleton inst.separator
+          <> foldMap tokensOf (inst.nameAndSeparator <#> _.name)
+          <> foldMap singleton (inst.nameAndSeparator <#> _.separator)
           <> foldMap (\(Tuple cs t) -> tokensOf cs <> singleton t) inst.constraints
           <> tokensOf inst.className
           <> tokensOf inst.types
@@ -577,8 +577,8 @@ instance rangeOfInstance :: RangeOf e => RangeOf (Instance e) where
 instance tokensOfInstance :: TokensOf e => TokensOf (Instance e) where
   tokensOf (Instance { head, body }) =
     cons head.keyword $ defer \_ ->
-      tokensOf head.name
-        <> foldMap singleton head.separator
+      foldMap tokensOf (head.nameAndSeparator <#> _.name)
+        <> foldMap singleton (head.nameAndSeparator <#> _.separator)
         <> foldMap (\(Tuple cs t) -> tokensOf cs <> singleton t) head.constraints
         <> tokensOf head.className
         <> tokensOf head.types
