@@ -114,7 +114,7 @@ instance tokensOfSeparated :: TokensOf a => TokensOf (Separated a) where
 instance rangeOfLabeled :: (RangeOf a, RangeOf b) => RangeOf (Labeled a b) where
   rangeOf (Labeled { label, value }) =
     { start: (rangeOf label).start
-    , end: (rangeOf label).end
+    , end: (rangeOf value).end
     }
 
 instance tokensOfLabeled :: (TokensOf a, TokensOf b) => TokensOf (Labeled a b) where
