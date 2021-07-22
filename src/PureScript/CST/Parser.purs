@@ -298,16 +298,18 @@ parseInstanceChainSeparator =
 parseInstance :: Parser (Recovered Instance)
 parseInstance = do
   keyword <- tokKeyword "instance"
-  name <- parseIdent
-  separator <- tokDoubleColon
+  name <- optional parseInstanceName
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> tokRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
   body <- optional $ Tuple <$> tokKeyword "where" <*> layoutNonEmpty parseInstanceBinding
   pure $ Instance
-    { head: { keyword, name, separator, constraints, className, types }
+    { head: { keyword, name, constraints, className, types }
     , body
     }
+
+parseInstanceName :: Parser (Tuple (Name Ident) SourceToken)
+parseInstanceName = Tuple <$> parseIdent <*> tokDoubleColon
 
 parseInstanceBinding :: Parser (Recovered InstanceBinding)
 parseInstanceBinding = do
@@ -332,12 +334,11 @@ parseDeclDerive = do
   derive_ <- tokKeyword "derive"
   newtype_ <- optional $ tokKeyword "newtype"
   keyword <- tokKeyword "instance"
-  name <- parseIdent
-  separator <- tokDoubleColon
+  name <- optional parseInstanceName
   constraints <- optional $ try $ Tuple <$> parseClassConstraints parseType3 <*> tokRightFatArrow
   className <- parseQualifiedProper
   types <- many parseTypeAtom
-  pure $ DeclDerive derive_ newtype_ { keyword, name, separator, constraints, className, types }
+  pure $ DeclDerive derive_ newtype_ { keyword, name, constraints, className, types }
 
 parseDeclValue :: Parser (Recovered Declaration)
 parseDeclValue = do
