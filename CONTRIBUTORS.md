@@ -17,3 +17,4 @@ By adding your name to the list below, you agree to license your contributions u
 | [@colinwahl](https://github.com/colinwahl) | Colin Wahl
 | [@kritzcreek](https://github.com/kritzcreek) | Christoph Hegemann
 | [@rintcius](https://github.com/rintcius) | Rintcius Blok
+| [@i-am-the-slime](https://github.com/i-am-the-slime) | Mark Eibes
