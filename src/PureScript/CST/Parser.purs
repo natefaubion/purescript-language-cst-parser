@@ -512,7 +512,7 @@ parseKindedVar open = do
 
 parseTypeParen :: SourceToken -> Parser (Recovered Type)
 parseTypeParen open = do
-  value <- parseType1
+  value <- parseType
   close <- tokRightParen
   pure $ TypeParens $ Wrapped { open, value, close }
 
