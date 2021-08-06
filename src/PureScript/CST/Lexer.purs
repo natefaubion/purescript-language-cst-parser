@@ -575,7 +575,7 @@ token =
     fractionPart <- optional (try (charDot *> fractionPartRegex))
     exponentPart <- optional (charExponent *> parseExponentPart)
     if isNothing fractionPart && isNothing exponentPart then
-      case Int.fromString intPart of
+      case Int.fromString (stripUnderscores intPart) of
         Just int ->
           pure $ TokInt intPart int
         Nothing ->
