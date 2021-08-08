@@ -263,7 +263,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
         Tuple (Tuple _ LytTick : stk') acc' ->
           Tuple stk' acc' # insertToken src
         _ ->
-          state # insertDefault # pushStack tokPos LytTick
+          state # collapse offsideEndP # insertSep # insertToken src # pushStack tokPos LytTick
 
     -- In general, commas should close all indented contexts.
     --     example = [ do foo
