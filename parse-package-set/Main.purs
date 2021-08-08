@@ -80,7 +80,7 @@ main = runAff_ (either throwException mempty) do
   liftEffect $ forWithIndex_ partition.left \ix failed -> do
     let
       message = Array.intercalate "\n"
-        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> ". Failed in "<> formatMs failed.duration <> " ] ----"
+        [ "---- [Error " <> show (ix + 1) <> " of " <> show (Array.length partition.left) <> ". Failed in " <> formatMs failed.duration <> " ] ----"
         , ""
         , Array.intercalate "\n" $ foldMap formatError failed.errors
         ]
@@ -150,7 +150,7 @@ main = runAff_ (either throwException mempty) do
       , show (Array.length partition.right)
       , " successfully parsed modules."
       ]
-    CycleDetected cycle -> Console.log $ Array.intercalate " "
+    CycleDetected _ -> Console.log $ Array.intercalate " "
       [ "Error: cycle detected in module graph"
       ]
 

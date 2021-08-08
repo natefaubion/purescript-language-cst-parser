@@ -372,8 +372,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
     go (Tuple lytPos lyt : stk') acc
       | p lytPos lyt =
           go stk'
-            if isIndented lyt
-            then acc `Array.snoc` (Tuple (lytToken tokPos (TokLayoutEnd lytPos.column)) stk')
+            if isIndented lyt then acc `Array.snoc` (Tuple (lytToken tokPos (TokLayoutEnd lytPos.column)) stk')
             else acc
     go stk acc =
       Tuple stk acc

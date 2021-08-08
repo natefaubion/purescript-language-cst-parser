@@ -59,7 +59,8 @@ unwindLayout pos eof = go
       case lyt of
         LytRoot ->
           step eof
-        _ | isIndented lyt ->
+        _
+          | isIndented lyt ->
               TokenCons (lytToken pos (TokLayoutEnd pos'.column)) pos (go tl) tl
           | otherwise ->
               step (go tl)

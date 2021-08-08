@@ -100,7 +100,7 @@ regex mkErr regexStr = Lex \str ->
       | Just match <- NonEmptyArray.head groups ->
           LexSucc match (SCU.drop (SCU.length match) str)
     _ ->
-      LexFail (\_ -> mkErr (mkUnexpected str))  str
+      LexFail (\_ -> mkErr (mkUnexpected str)) str
   where
   matchRegex = unsafeRegex ("^(?:" <> regexStr <> ")") unicode
 
@@ -136,10 +136,10 @@ optional :: forall e a. Lex e a -> Lex e (Maybe a)
 optional (Lex k) = Lex \str ->
   case k str of
     LexFail err str'
-        | SCU.length str == SCU.length str' ->
-            LexSucc Nothing str
-        | otherwise ->
-            LexFail err str'
+      | SCU.length str == SCU.length str' ->
+          LexSucc Nothing str
+      | otherwise ->
+          LexFail err str'
     LexSucc a b ->
       LexSucc (Just a) b
 
@@ -393,17 +393,18 @@ token =
 
   parseLower = ado
     ident <- parseIdent
-    in case _ of
-      Nothing ->
-        case ident of
-          "forall" ->
-            TokForall ASCII
-          "_" ->
-            TokUnderscore
-          _ ->
-            TokLowerName Nothing ident
-      moduleName ->
-        TokLowerName moduleName ident
+    in
+      case _ of
+        Nothing ->
+          case ident of
+            "forall" ->
+              TokForall ASCII
+            "_" ->
+              TokUnderscore
+            _ ->
+              TokLowerName Nothing ident
+        moduleName ->
+          TokLowerName moduleName ident
 
   parseUpper :: Lex _ (Maybe ModuleName -> Token)
   parseUpper =
@@ -412,58 +413,60 @@ token =
   parseOperator :: Lex _ (Maybe ModuleName -> Token)
   parseOperator = ado
     symbol <- parseSymbolIdent
-    in case _ of
-      Nothing ->
-        case symbol of
-          "<-" ->
-            TokLeftArrow ASCII
-          "←" ->
-            TokLeftArrow Unicode
-          "->" ->
-            TokRightArrow ASCII
-          "→" ->
-            TokRightArrow Unicode
-          "=>" ->
-            TokRightFatArrow ASCII
-          "⇒" ->
-            TokRightFatArrow Unicode
-          "::" ->
-            TokDoubleColon ASCII
-          "∷" ->
-            TokDoubleColon Unicode
-          "∀" ->
-            TokForall Unicode
-          "=" ->
-            TokEquals
-          "." ->
-            TokDot
-          "\\" ->
-            TokBackslash
-          "|" ->
-            TokPipe
-          "@" ->
-            TokAt
-          "`" ->
-            TokTick
-          _ ->
-            TokOperator Nothing symbol
-      moduleName ->
-        TokOperator moduleName symbol
+    in
+      case _ of
+        Nothing ->
+          case symbol of
+            "<-" ->
+              TokLeftArrow ASCII
+            "←" ->
+              TokLeftArrow Unicode
+            "->" ->
+              TokRightArrow ASCII
+            "→" ->
+              TokRightArrow Unicode
+            "=>" ->
+              TokRightFatArrow ASCII
+            "⇒" ->
+              TokRightFatArrow Unicode
+            "::" ->
+              TokDoubleColon ASCII
+            "∷" ->
+              TokDoubleColon Unicode
+            "∀" ->
+              TokForall Unicode
+            "=" ->
+              TokEquals
+            "." ->
+              TokDot
+            "\\" ->
+              TokBackslash
+            "|" ->
+              TokPipe
+            "@" ->
+              TokAt
+            "`" ->
+              TokTick
+            _ ->
+              TokOperator Nothing symbol
+        moduleName ->
+          TokOperator moduleName symbol
 
   parseSymbol :: Lex _ (Maybe ModuleName -> Token)
   parseSymbol = ado
     symbol <- try (tokenLeftParen *> parseSymbolIdent <* tokenRightParen)
-    in case _ of
-      Nothing ->
-        case symbol of
-          "->" ->
-            TokSymbolArrow ASCII
-          "→" ->
-            TokSymbolArrow Unicode
-          _ ->
-            TokSymbolName Nothing symbol
-      moduleName ->
-        TokSymbolName moduleName symbol
+    in
+      case _ of
+        Nothing ->
+          case symbol of
+            "->" ->
+              TokSymbolArrow ASCII
+            "→" ->
+              TokSymbolArrow Unicode
+            _ ->
+              TokSymbolName Nothing symbol
+        moduleName ->
+          TokSymbolName moduleName symbol
 
   parseHole = ado
     ident <- try $ charQuestionMark *> (parseIdent <|> parseProper)
@@ -661,7 +664,7 @@ token =
     char (LexExpected "exponent") 'e'
 
   charAny =
-   satisfy (LexExpected "char") (const true)
+    satisfy (LexExpected "char") (const true)
 
 toModuleName :: Array String -> Maybe ModuleName
 toModuleName = case _ of

@@ -126,10 +126,10 @@ type OnType (t :: (P.Type -> P.Type) -> P.Type) r = (onType :: t Type | r)
 
 type OnPureScript t =
   ( OnBinder t
-  + OnDecl t
-  + OnExpr t
-  + OnType t
-  + ()
+      + OnDecl t
+      + OnExpr t
+      + OnType t
+      + ()
   )
 
 defaultVisitorM :: forall e f. Applicative f => { | OnPureScript (Rewrite e f) }
@@ -370,10 +370,10 @@ traverseSeparated k (Separated sep) = ado
   in Separated { head, tail }
 
 traverseWrapped
- :: forall f a
-  . Applicative f
- => (a -> f a)
- -> Rewrite a f Wrapped
+  :: forall f a
+   . Applicative f
+  => (a -> f a)
+  -> Rewrite a f Wrapped
 traverseWrapped k (Wrapped w) =
   (\value -> Wrapped w { value = value }) <$> k w.value
 
@@ -566,9 +566,9 @@ bottomUpTraversal visitor = visitor'
   where
   visitor' =
     { onBinder: \a -> visitor.onBinder =<< defer (\_ -> traverseBinder visitor' a)
-    , onExpr:   \a -> visitor.onExpr   =<< defer (\_ -> traverseExpr visitor' a)
-    , onType:   \a -> visitor.onType   =<< defer (\_ -> traverseType visitor' a)
-    , onDecl:   \a -> visitor.onDecl   =<< defer (\_ -> traverseDecl visitor' a)
+    , onExpr: \a -> visitor.onExpr =<< defer (\_ -> traverseExpr visitor' a)
+    , onType: \a -> visitor.onType =<< defer (\_ -> traverseType visitor' a)
+    , onDecl: \a -> visitor.onDecl =<< defer (\_ -> traverseDecl visitor' a)
     }
 
 rewriteBottomUpM
@@ -605,9 +605,9 @@ topDownTraversal visitor = visitor'
   where
   visitor' =
     { onBinder: \a -> visitor.onBinder a >>= traverseBinder visitor'
-    , onExpr:   \a -> visitor.onExpr a   >>= traverseExpr visitor'
-    , onType:   \a -> visitor.onType a   >>= traverseType visitor'
-    , onDecl:   \a -> visitor.onDecl a   >>= traverseDecl visitor'
+    , onExpr: \a -> visitor.onExpr a >>= traverseExpr visitor'
+    , onType: \a -> visitor.onType a >>= traverseType visitor'
+    , onDecl: \a -> visitor.onDecl a >>= traverseDecl visitor'
     }
 
 rewriteTopDownM
@@ -724,9 +724,9 @@ bottomUpPureTraversal visitor = visitor'
   where
   visitor' =
     { onBinder: \a -> pure <<< visitor.onBinder =<< traverseBinder visitor' a
-    , onExpr:   \a -> pure <<< visitor.onExpr   =<< traverseExpr visitor' a
-    , onType:   \a -> pure <<< visitor.onType   =<< traverseType visitor' a
-    , onDecl:   \a -> pure <<< visitor.onDecl   =<< traverseDecl visitor' a
+    , onExpr: \a -> pure <<< visitor.onExpr =<< traverseExpr visitor' a
+    , onType: \a -> pure <<< visitor.onType =<< traverseType visitor' a
+    , onDecl: \a -> pure <<< visitor.onDecl =<< traverseDecl visitor' a
     }
 
 rewriteBottomUp
@@ -761,9 +761,9 @@ topDownPureTraversal visitor = visitor'
   where
   visitor' =
     { onBinder: \a -> pure (visitor.onBinder a) >>= traverseBinder visitor'
-    , onExpr:   \a -> pure (visitor.onExpr a)   >>= traverseExpr visitor'
-    , onType:   \a -> pure (visitor.onType a)   >>= traverseType visitor'
-    , onDecl:   \a -> pure (visitor.onDecl a)   >>= traverseDecl visitor'
+    , onExpr: \a -> pure (visitor.onExpr a) >>= traverseExpr visitor'
+    , onType: \a -> pure (visitor.onType a) >>= traverseType visitor'
+    , onDecl: \a -> pure (visitor.onDecl a) >>= traverseDecl visitor'
     }
 
 rewriteTopDown

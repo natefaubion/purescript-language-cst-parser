@@ -141,7 +141,7 @@ derive instance newtypeSeparated :: Newtype (Separated a) _
 newtype Labeled a b = Labeled
   { label :: a
   , separator :: SourceToken
-  , value  :: b
+  , value :: b
   }
 
 derive instance newtypeLabeled :: Newtype (Labeled a b) _
