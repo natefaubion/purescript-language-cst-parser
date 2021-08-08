@@ -398,6 +398,8 @@ token =
         case ident of
           "forall" ->
             TokForall ASCII
+          "_" ->
+            TokUnderscore
           _ ->
             TokLowerName Nothing ident
       moduleName ->
