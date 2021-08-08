@@ -30,11 +30,11 @@ jobs:
       - name: Build source
         run: spago build --purs-args '--censor-lib --strict'
 
+      - name: Check formatting
+        run: npm run check
+
       - name: Parse package sets
         run: npm run parse-package-set
 
       - name: Run file benchmark
         run: npm run bench-file test/Main.purs
-
-      - name: Check formatting
-        run: npm run check
