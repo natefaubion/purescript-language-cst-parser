@@ -822,7 +822,7 @@ parseBinder2 = defer \_ ->
     <|> parseBinderAtom
 
 parseBinderNegative :: Parser (Recovered Binder)
-parseBinderNegative =  do
+parseBinderNegative = do
   negative <- tokKeyOperator "-"
   uncurry (BinderInt (Just negative)) <$> parseInt
     <|> uncurry (BinderNumber (Just negative)) <$> parseNumber
@@ -842,7 +842,7 @@ parseBinderAtom = defer \_ ->
     <|> uncurry BinderChar <$> parseChar
     <|> uncurry BinderBoolean <$> parseBoolean
     <|> uncurry (BinderInt Nothing) <$> parseInt
-    <|> uncurry (BinderNumber Nothing) <$>  parseNumber
+    <|> uncurry (BinderNumber Nothing) <$> parseNumber
     <|> BinderArray <$> delimited tokLeftSquare tokRightSquare tokComma parseBinder
     <|> BinderRecord <$> delimited tokLeftBrace tokRightBrace tokComma (parseRecordLabeled parseBinder)
     <|> BinderParens <$> parens parseBinder

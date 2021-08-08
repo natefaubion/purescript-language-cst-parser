@@ -2,10 +2,12 @@
   "private": true,
   "scripts": {
     "parse-package-set": "spago -x parse-package-set/parse-package-set.dhall run",
-    "bench-file": "spago -x bench/bench.dhall build && node --expose-gc -e \"require('./output/BenchFile/index.js').main()\""
+    "bench-file": "spago -x bench/bench.dhall build && node --expose-gc -e \"require('./output/BenchFile/index.js').main()\"",
+    "format": "purs-tidy format-in-place \"src/**/*.purs\" \"test/**/*.purs\" \"bench/**/*.purs\" \"parse-package-set/**/*.purs\""
   },
   "devDependencies": {
     "purescript": "^0.14.0",
+    "purs-tidy": "^0.2.0",
     "spago": "^0.19.1"
   }
 }

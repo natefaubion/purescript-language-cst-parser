@@ -97,7 +97,7 @@ uncons2 done more l r = case l of
   TokenWrap a b c -> more a (b <> TokenCons c r)
   TokenAppend a b -> uncons2 done more a (b <> r)
   TokenDefer k -> uncons2 done more (k unit) r
-  TokenArray ix1 ix2 arr ->  do
+  TokenArray ix1 ix2 arr -> do
     let
       next
         | ix1 == ix2 = r

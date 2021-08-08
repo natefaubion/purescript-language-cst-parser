@@ -332,7 +332,8 @@ runParser' = \state parser ->
           , errors: nextErrors
           , position: nextPos
           , stream: nextStream
-          } a
+          }
+          a
       else
         unwindFail error position (state { consumed = state.consumed || prevState.consumed }) prevStack
     StkLookAhead prevStack prevState ->
