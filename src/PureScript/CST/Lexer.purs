@@ -15,7 +15,7 @@ import Data.Int as Int
 import Data.Lazy as Lazy
 import Data.List (List(..), (:))
 import Data.Maybe (Maybe(..), isNothing, maybe)
-import Data.Newtype (un, unwrap)
+import Data.Newtype (unwrap)
 import Data.Number as Number
 import Data.String (Pattern(..), Replacement(..))
 import Data.String as String
@@ -111,13 +111,6 @@ string mkErr match = Lex \str ->
   else
     LexFail (\_ -> mkErr (mkUnexpected str)) str
 
-string' :: forall a e. (String -> e) -> a -> String -> Lex (Unit -> e) a
-string' mkErr res match = Lex \str ->
-  if SCU.take (SCU.length match) str == match then
-    LexSucc res (SCU.drop (SCU.length match) str)
-  else
-    LexFail (\_ -> mkErr (mkUnexpected str)) str
-
 char :: forall e. (String -> e) -> Char -> Lex (Unit -> e) Char
 char mkErr match = Lex \str ->
   if SCU.singleton match == SCU.take 1 str then
@@ -150,11 +143,6 @@ satisfy mkErr p = Lex \str ->
       LexSucc ch (SCU.drop 1 str)
     _ ->
       LexFail (\_ -> mkErr (mkUnexpected str)) str
-
-takeWhile :: forall e. (Char -> Boolean) -> Lex e String
-takeWhile p = Lex \str -> do
-  let res = SCU.takeWhile p str
-  LexSucc res (SCU.drop (SCU.length res) str)
 
 many :: forall e a. Lex e a -> Lex e (Array a)
 many (Lex k) = Lex \str -> do
@@ -222,15 +210,6 @@ lexWithState = init
       <$> token
       <*> trailingComments
       <*> leadingComments
-
-bump :: Int -> Int -> SourcePos -> SourcePos
-bump lines cols pos
-  | lines == 0 =
-      pos { column = pos.column + cols }
-  | otherwise =
-      { line: pos.line + lines
-      , column: cols
-      }
 
 bumpToken :: SourcePos -> Token -> SourcePos
 bumpToken pos@{ line, column } = case _ of
@@ -671,6 +650,3 @@ toModuleName :: Array String -> Maybe ModuleName
 toModuleName = case _ of
   [] -> Nothing
   mn -> Just $ ModuleName $ String.joinWith "." mn
-
-moduleNameLength :: Maybe ModuleName -> Int
-moduleNameLength = maybe 0 (String.length <<< un ModuleName)

@@ -254,7 +254,7 @@ runParser' = \state parser ->
       go (StkLookAhead stack state) state a
     Bind p binds ->
       go (StkBinds stack binds) state p
-    p@(Pure a) ->
+    Pure a ->
       case unwindSucc a state stack of
         SuccBinds prevStack prevState queue ->
           case unconsView queue of
@@ -264,7 +264,7 @@ runParser' = \state parser ->
               go (StkBinds prevStack nextQueue) prevState (k a)
         SuccStop res ->
           res
-    p@(Fail errPos err) ->
+    Fail errPos err ->
       case unwindFail err errPos state stack of
         FailAlt prevStack prevState prev ->
           go prevStack prevState prev
@@ -299,7 +299,7 @@ runParser' = \state parser ->
             iter acc state' = case runParser' (state' { consumed = false }) p of
               ParseSucc a state'' ->
                 iter (step acc a) state''
-              res@(ParseFail err errPos state'' _)
+              ParseFail err errPos state'' _
                 | state''.consumed ->
                     Tuple state'' (Fail errPos err)
                 | otherwise ->

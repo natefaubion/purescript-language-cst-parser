@@ -120,9 +120,9 @@ printTokenError = case _ of
     "hole ?" <> name
   TokChar raw _ ->
     "char literal '" <> raw <> "'"
-  TokString raw _ ->
+  TokString _ _ ->
     "string literal"
-  TokRawString raw ->
+  TokRawString _ ->
     "raw string literal"
   TokInt raw _ ->
     "int literal " <> raw

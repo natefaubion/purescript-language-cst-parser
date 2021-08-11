@@ -363,7 +363,7 @@ insertLayout src@{ range, value: tok } nextPos stack =
   pushStack lytPos lyt (Tuple stk acc) =
     Tuple (Tuple lytPos lyt : stk) acc
 
-  popStack p state@(Tuple (Tuple _ lyt : stk') acc)
+  popStack p (Tuple (Tuple _ lyt : stk') acc)
     | p lyt = Tuple stk' acc
   popStack _ state = state
 

@@ -89,9 +89,6 @@ parens = wrapped tokLeftParen tokRightParen
 braces :: forall a. Parser a -> Parser (Wrapped a)
 braces = wrapped tokLeftBrace tokRightBrace
 
-squares :: forall a. Parser a -> Parser (Wrapped a)
-squares = wrapped tokLeftSquare tokRightSquare
-
 layoutNonEmpty :: forall a. Parser a -> Parser (NonEmptyArray a)
 layoutNonEmpty valueParser = ado
   head <- tokLayoutStart *> valueParser
@@ -1164,11 +1161,11 @@ recoverTokensWhile p initStream = go [] initStream
 
   go :: Array SourceToken -> TokenStream -> Recovery (Array SourceToken)
   go acc stream = case TokenStream.step stream of
-    TokenError errPos err errStream _ ->
+    TokenError errPos _ _ _ ->
       Recovery acc errPos stream
     TokenEOF eofPos _ ->
       Recovery acc eofPos stream
-    TokenCons tok nextPos nextStream _ ->
+    TokenCons tok _ nextStream _ ->
       if p tok indent then
         go (Array.snoc acc tok) nextStream
       else
