@@ -11,6 +11,7 @@ module PureScript.CST.Parser
   ) where
 
 import Prelude
+import Prim hiding (Type, Row)
 
 import Control.Alt (alt)
 import Control.Lazy (defer)
@@ -23,13 +24,12 @@ import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import Prim as P
-import Prim hiding (Type, Row)
 import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
 import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), IntValue(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
 type Recovered :: (P.Type -> P.Type) -> P.Type
 type Recovered f = f RecoveredError
@@ -386,7 +386,7 @@ parseForeignValue = do
 parseDeclFixity :: Parser (Recovered Declaration)
 parseDeclFixity = do
   keyword <- parseFixityKeyword
-  prec <- parseInt
+  prec <- parseInt32
   operator <- parseFixityOp
   pure $ DeclFixity { keyword, prec, operator }
 
@@ -945,11 +945,20 @@ parseChar = expectMap case _ of
     Just $ Tuple tok ch
   _ -> Nothing
 
-parseInt :: Parser (Tuple SourceToken Int)
+parseInt :: Parser (Tuple SourceToken IntValue)
 parseInt = expectMap case _ of
   tok@{ value: TokInt _ int } ->
     Just $ Tuple tok int
   _ -> Nothing
+
+parseInt32 :: Parser (Tuple SourceToken Int)
+parseInt32 = take case _ of
+  tok@{ value: TokInt _ (Int32 val) } ->
+    Right $ Tuple tok val
+  { value: TokInt raw _ } ->
+    Left $ LexIntOutOfRange raw
+  tok ->
+    Left $ UnexpectedToken tok.value
 
 parseNumber :: Parser (Tuple SourceToken Number)
 parseNumber = expectMap case _ of

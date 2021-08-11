@@ -38,7 +38,14 @@ data SourceStyle
   = ASCII
   | Unicode
 
-derive instance eqSourceTyle :: Eq SourceStyle
+derive instance eqSourceStyle :: Eq SourceStyle
+
+data IntValue
+  = Int32 Int
+  | BigInt String
+  | BigHex String
+
+derive instance eqIntValue :: Eq IntValue
 
 data Token
   = TokLeftParen
@@ -69,7 +76,7 @@ data Token
   | TokChar String Char
   | TokString String String
   | TokRawString String
-  | TokInt String Int
+  | TokInt String IntValue
   | TokNumber String Number
   | TokLayoutStart Int
   | TokLayoutSep Int
@@ -359,7 +366,7 @@ data Expr e
   | ExprBoolean SourceToken Boolean
   | ExprChar SourceToken Char
   | ExprString SourceToken String
-  | ExprInt SourceToken Int
+  | ExprInt SourceToken IntValue
   | ExprNumber SourceToken Number
   | ExprArray (Delimited (Expr e))
   | ExprRecord (Delimited (RecordLabeled (Expr e)))
@@ -463,7 +470,7 @@ data Binder e
   | BinderBoolean SourceToken Boolean
   | BinderChar SourceToken Char
   | BinderString SourceToken String
-  | BinderInt (Maybe SourceToken) SourceToken Int
+  | BinderInt (Maybe SourceToken) SourceToken IntValue
   | BinderNumber (Maybe SourceToken) SourceToken Number
   | BinderArray (Delimited (Binder e))
   | BinderRecord (Delimited (RecordLabeled (Binder e)))
