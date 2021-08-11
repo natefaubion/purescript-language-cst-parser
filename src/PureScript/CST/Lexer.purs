@@ -28,7 +28,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, insertLayout)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, step, unwindLayout)
-import PureScript.CST.Types (Comment(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
+import PureScript.CST.Types (Comment(..), IntValue(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
 
 data LexResult e a
   = LexFail e String
@@ -571,20 +571,21 @@ token =
     raw <- hexIntPrefix *> hexIntRegex
     case Int.fromStringAs hexadecimal raw of
       Just int ->
-        pure $ TokInt ("0x" <> raw) int
+        pure $ TokInt ("0x" <> raw) (SmallInt int)
       Nothing ->
-        fail $ LexHexOutOfRange raw
+        pure $ TokInt ("0x" <> raw) (BigHex raw)
 
   parseNumber = do
     intPart <- intPartRegex
     fractionPart <- optional (try (charDot *> fractionPartRegex))
     exponentPart <- optional (charExponent *> parseExponentPart)
-    if isNothing fractionPart && isNothing exponentPart then
-      case Int.fromString (stripUnderscores intPart) of
+    if isNothing fractionPart && isNothing exponentPart then do
+      let intVal = stripUnderscores intPart
+      case Int.fromString intVal of
         Just int ->
-          pure $ TokInt intPart int
+          pure $ TokInt intPart (SmallInt int)
         Nothing ->
-          fail $ LexIntOutOfRange intPart
+          pure $ TokInt intPart (BigInt intVal)
     else do
       let
         raw =
