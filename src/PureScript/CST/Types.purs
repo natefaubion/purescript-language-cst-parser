@@ -41,7 +41,7 @@ data SourceStyle
 derive instance eqSourceStyle :: Eq SourceStyle
 
 data IntValue
-  = Int32 Int
+  = SmallInt Int
   | BigInt String
   | BigHex String
 

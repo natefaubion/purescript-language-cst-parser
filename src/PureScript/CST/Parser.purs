@@ -386,7 +386,7 @@ parseForeignValue = do
 parseDeclFixity :: Parser (Recovered Declaration)
 parseDeclFixity = do
   keyword <- parseFixityKeyword
-  prec <- parseInt32
+  prec <- parseSmallInt
   operator <- parseFixityOp
   pure $ DeclFixity { keyword, prec, operator }
 
@@ -951,9 +951,9 @@ parseInt = expectMap case _ of
     Just $ Tuple tok int
   _ -> Nothing
 
-parseInt32 :: Parser (Tuple SourceToken Int)
-parseInt32 = take case _ of
-  tok@{ value: TokInt _ (Int32 val) } ->
+parseSmallInt :: Parser (Tuple SourceToken Int)
+parseSmallInt = take case _ of
+  tok@{ value: TokInt _ (SmallInt val) } ->
     Right $ Tuple tok val
   { value: TokInt raw _ } ->
     Left $ LexIntOutOfRange raw

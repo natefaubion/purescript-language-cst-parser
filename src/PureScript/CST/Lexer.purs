@@ -571,7 +571,7 @@ token =
     raw <- hexIntPrefix *> hexIntRegex
     case Int.fromStringAs hexadecimal raw of
       Just int ->
-        pure $ TokInt ("0x" <> raw) (Int32 int)
+        pure $ TokInt ("0x" <> raw) (SmallInt int)
       Nothing ->
         pure $ TokInt ("0x" <> raw) (BigHex raw)
 
@@ -583,7 +583,7 @@ token =
       let intVal = stripUnderscores intPart
       case Int.fromString intVal of
         Just int ->
-          pure $ TokInt intPart (Int32 int)
+          pure $ TokInt intPart (SmallInt int)
         Nothing ->
           pure $ TokInt intPart (BigInt intVal)
     else do
