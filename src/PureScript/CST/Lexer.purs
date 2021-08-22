@@ -341,7 +341,7 @@ trailingComments = many do
 
 comment :: Lex LexError String
 comment =
-  regex (LexExpected "block comment") """\{-(-(?!\})|[^-]+)*-\}"""
+  regex (LexExpected "block comment") """\{-(-(?!\})|[^-]+)*(-\}|$)"""
     <|> regex (LexExpected "line comment") """--[^\r\n]*"""
 
 spaceComment :: Lex LexError Int
