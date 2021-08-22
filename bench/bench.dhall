@@ -2,14 +2,40 @@ let conf = ../spago.dhall
 
 in conf // {
   sources = conf.sources # [ "bench/**/*.purs" ],
-  dependencies = conf.dependencies #
+  dependencies =
     [ "aff"
+    , "arrays"
     , "console"
+    , "const"
+    , "control"
+    , "effect"
+    , "either"
+    , "foldable-traversable"
+    , "free"
+    , "functors"
+    , "identity"
+    , "integers"
+    , "lazy"
+    , "lists"
+    , "maybe"
     , "minibench"
+    , "newtype"
     , "node-buffer"
     , "node-fs-aff"
     , "node-process"
     , "numbers"
+    , "numbers"
+    , "ordered-collections"
+    , "partial"
+    , "prelude"
+    , "psci-support"
+    , "st"
     , "strings"
+    , "strings"
+    , "transformers"
+    , "tuples"
+    , "typelevel-prelude"
+    , "unfoldable"
+    , "unsafe-coerce"
     ]
 }
