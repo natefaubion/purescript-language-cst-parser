@@ -1,6 +1,7 @@
 module PureScript.CST.Lexer
   ( lex
   , lexWithState
+  , lexToken
   ) where
 
 import Prelude
@@ -9,6 +10,7 @@ import Control.Alt (class Alt, (<|>))
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Char as Char
+import Data.Either (Either(..))
 import Data.Foldable (fold, foldl, foldMap)
 import Data.Int (hexadecimal)
 import Data.Int as Int
@@ -210,6 +212,14 @@ lexWithState = init
       <$> token
       <*> trailingComments
       <*> leadingComments
+
+lexToken :: String -> Either LexError Token
+lexToken = k >>> case _ of
+  LexSucc tok "" -> Right tok
+  LexSucc tok _ -> Left (\_ -> ExpectedEof tok)
+  LexFail err _ -> Left err
+  where
+  (Lex k) = token
 
 bumpToken :: SourcePos -> Token -> SourcePos
 bumpToken pos@{ line, column } = case _ of
