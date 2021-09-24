@@ -20,7 +20,7 @@ module PureScript.CST.Parser.Monad
 
 import Prelude
 
-import Control.Alt (class Alt)
+import Control.Alt (class Alt, (<|>))
 import Control.Lazy (class Lazy)
 import Control.Monad.ST.Class (liftST)
 import Data.Array as Array
@@ -100,13 +100,6 @@ mkFold = unsafeCoerce
 unFold :: forall r a b. (forall s. FoldBox a b s -> r) -> Fold a b -> r
 unFold = unsafeCoerce
 
-foldMaybe :: forall a. Fold a (Maybe a)
-foldMaybe = mkFold
-  { init: const Nothing
-  , step: const Just
-  , done: identity
-  }
-
 foldArray :: forall a. Fold a (Array a)
 foldArray = mkFold
   { init: \_ ->
@@ -182,7 +175,7 @@ many :: forall a. Parser a -> Parser (Array a)
 many = iter foldArray
 
 optional :: forall a. Parser a -> Parser (Maybe a)
-optional = iter foldMaybe
+optional p = Just <$> p <|> pure Nothing
 
 eof :: Parser (Tuple SourcePos (Array (Comment LineFeed)))
 eof = Eof identity
