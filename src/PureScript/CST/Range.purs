@@ -69,10 +69,10 @@ instance tokensOfModule :: TokensOf e => TokensOf (Module e) where
   tokensOf (Module { header: ModuleHeader header, body: ModuleBody body }) =
     cons header.keyword
       $ tokensOf header.name
-        <> defer (\_ -> foldMap tokensOf header.exports)
-        <> singleton header.where
-        <> defer (\_ -> foldMap tokensOf header.imports)
-        <> defer (\_ -> foldMap tokensOf body.decls)
+          <> defer (\_ -> foldMap tokensOf header.exports)
+          <> singleton header.where
+          <> defer (\_ -> foldMap tokensOf header.imports)
+          <> defer (\_ -> foldMap tokensOf body.decls)
 
 instance rangeOfName :: RangeOf (Name a) where
   rangeOf (Name { token }) = token.range
