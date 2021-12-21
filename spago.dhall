@@ -18,6 +18,7 @@
   , "ordered-collections"
   , "partial"
   , "prelude"
+  , "profunctor-lenses"
   , "psci-support"
   , "st"
   , "strings"
