@@ -2,6 +2,8 @@ module PureScript.CST.Types.Lens where
 
 import Prelude
 
+import Prim hiding (Row, Type)
+
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Either (Either(..))
 import Data.Lens (Lens')
