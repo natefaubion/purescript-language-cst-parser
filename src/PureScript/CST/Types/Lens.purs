@@ -11,7 +11,6 @@ import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Prism (Prism', prism)
 import Data.Maybe (Maybe)
 import Data.Tuple (Tuple(..))
-import Prelude (Unit, const, identity, unit)
 import PureScript.CST.Types (AdoBlock, CaseOf, ClassHead, DataCtor, DataHead, Delimited, DelimitedNonEmpty, DoBlock, FixityFields, GuardedExpr, Ident, IfThenElse, ImportDecl, Instance, InstanceHead, Label, Labeled, Lambda, LetIn, Module, ModuleBody, ModuleHeader, ModuleName, Name, Operator, PatternGuard, Proper, QualifiedName, RecordAccessor, Row, Separated, SourcePos, SourceRange, SourceToken, ValueBindingFields, Where, Wrapped, Binder(..), ClassFundep(..), Comment(..), DataMembers(..), Declaration(..), DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), Import(..), InstanceBinding(..), IntValue(..), LetBinding(..), LineFeed(..), OneOrDelimited(..), RecordLabeled(..), RecordUpdate(..), Role(..), SourceStyle(..), Token(..), Type(..), TypeVarBinding(..))
 
 _ModuleName :: Lens' ModuleName String
