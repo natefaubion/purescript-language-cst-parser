@@ -1,19 +1,20 @@
 module PureScript.CST.Types where
 
 import Prelude
+import Prim hiding (Row, Type)
 
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Either (Either)
+import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple)
-import Prim hiding (Row, Type)
 
 newtype ModuleName = ModuleName String
 
-derive newtype instance eqModuleName :: Eq ModuleName
-derive newtype instance ordModuleName :: Ord ModuleName
-derive instance newtypeModuleName :: Newtype ModuleName _
+derive newtype instance Eq ModuleName
+derive newtype instance Ord ModuleName
+derive instance Newtype ModuleName _
 
 type SourcePos =
   { line :: Int
@@ -30,22 +31,30 @@ data Comment l
   | Space Int
   | Line l Int
 
+derive instance Generic (Comment a) _
+derive instance Eq a => Eq (Comment a)
+
 data LineFeed
   = LF
   | CRLF
+
+derive instance Generic LineFeed _
+derive instance Eq LineFeed
 
 data SourceStyle
   = ASCII
   | Unicode
 
-derive instance eqSourceStyle :: Eq SourceStyle
+derive instance Eq SourceStyle
+derive instance Generic SourceStyle _
 
 data IntValue
   = SmallInt Int
   | BigInt String
   | BigHex String
 
-derive instance eqIntValue :: Eq IntValue
+derive instance Eq IntValue
+derive instance Generic IntValue _
 
 data Token
   = TokLeftParen
@@ -82,7 +91,8 @@ data Token
   | TokLayoutSep Int
   | TokLayoutEnd Int
 
-derive instance eqToken :: Eq Token
+derive instance Eq Token
+derive instance Generic Token _
 
 type SourceToken =
   { range :: SourceRange
@@ -93,34 +103,35 @@ type SourceToken =
 
 newtype Ident = Ident String
 
-derive newtype instance eqIdent :: Eq Ident
-derive newtype instance ordIdent :: Ord Ident
-derive instance newtypeIdent :: Newtype Ident _
+derive newtype instance Eq Ident
+derive newtype instance Ord Ident
+derive instance Newtype Ident _
 
 newtype Proper = Proper String
 
-derive newtype instance eqProper :: Eq Proper
-derive newtype instance ordProper :: Ord Proper
-derive instance newtypeProper :: Newtype Proper _
+derive newtype instance Eq Proper
+derive newtype instance Ord Proper
+derive instance Newtype Proper _
 
 newtype Label = Label String
 
-derive newtype instance eqLabel :: Eq Label
-derive newtype instance ordLabel :: Ord Label
-derive instance newtypeLabel :: Newtype Label _
+derive newtype instance Eq Label
+derive newtype instance Ord Label
+derive instance Newtype Label _
 
 newtype Operator = Operator String
 
-derive newtype instance eqOperator :: Eq Operator
-derive newtype instance ordOperator :: Ord Operator
-derive instance newtypeOperator :: Newtype Operator _
+derive newtype instance Eq Operator
+derive newtype instance Ord Operator
+derive instance Newtype Operator _
 
 newtype Name a = Name
   { token :: SourceToken
   , name :: a
   }
 
-derive instance newtypeName :: Newtype (Name a) _
+derive instance Newtype (Name a) _
+derive newtype instance Eq a => Eq (Name a)
 
 newtype QualifiedName a = QualifiedName
   { token :: SourceToken
@@ -128,7 +139,8 @@ newtype QualifiedName a = QualifiedName
   , name :: a
   }
 
-derive instance newtypeQualifiedName :: Newtype (QualifiedName a) _
+derive instance Newtype (QualifiedName a) _
+derive newtype instance Eq a => Eq (QualifiedName a)
 
 newtype Wrapped a = Wrapped
   { open :: SourceToken
@@ -136,14 +148,16 @@ newtype Wrapped a = Wrapped
   , close :: SourceToken
   }
 
-derive instance newtypeWrapped :: Newtype (Wrapped a) _
+derive instance Newtype (Wrapped a) _
+derive newtype instance Eq a => Eq (Wrapped a)
 
 newtype Separated a = Separated
   { head :: a
   , tail :: Array (Tuple SourceToken a)
   }
 
-derive instance newtypeSeparated :: Newtype (Separated a) _
+derive instance Newtype (Separated a) _
+derive newtype instance Eq a => Eq (Separated a)
 
 newtype Labeled a b = Labeled
   { label :: a
@@ -151,7 +165,8 @@ newtype Labeled a b = Labeled
   , value :: b
   }
 
-derive instance newtypeLabeled :: Newtype (Labeled a b) _
+derive instance Newtype (Labeled a b) _
+derive newtype instance (Eq a, Eq b) => Eq (Labeled a b)
 
 type Delimited a = Wrapped (Maybe (Separated a))
 type DelimitedNonEmpty a = Wrapped (Separated a)
@@ -159,6 +174,9 @@ type DelimitedNonEmpty a = Wrapped (Separated a)
 data OneOrDelimited a
   = One a
   | Many (DelimitedNonEmpty a)
+
+derive instance Generic (OneOrDelimited a) _
+derive instance Eq a => Eq (OneOrDelimited a)
 
 data Type e
   = TypeVar (Name Ident)
@@ -180,23 +198,31 @@ data Type e
   | TypeUnaryRow SourceToken (Type e)
   | TypeError e
 
+derive instance Generic (Type e) _
+derive instance Eq e => Eq (Type e)
+
 data TypeVarBinding e
   = TypeVarKinded (Wrapped (Labeled (Name Ident) (Type e)))
   | TypeVarName (Name Ident)
+
+derive instance Generic (TypeVarBinding e) _
+derive instance Eq e => Eq (TypeVarBinding e)
 
 newtype Row e = Row
   { labels :: Maybe (Separated (Labeled (Name Label) (Type e)))
   , tail :: Maybe (Tuple SourceToken (Type e))
   }
 
-derive instance newtypeRow :: Newtype (Row e) _
+derive instance Newtype (Row e) _
+derive newtype instance Eq e => Eq (Row e)
 
 newtype Module e = Module
   { header :: ModuleHeader e
   , body :: ModuleBody e
   }
 
-derive instance newtypeModule :: Newtype (Module e) _
+derive instance Newtype (Module e) _
+derive newtype instance Eq e => Eq (Module e)
 
 newtype ModuleHeader e = ModuleHeader
   { keyword :: SourceToken
@@ -206,7 +232,8 @@ newtype ModuleHeader e = ModuleHeader
   , imports :: Array (ImportDecl e)
   }
 
-derive instance newtypeModuleHeader :: Newtype (ModuleHeader e) _
+derive instance Newtype (ModuleHeader e) _
+derive newtype instance Eq e => Eq (ModuleHeader e)
 
 newtype ModuleBody e = ModuleBody
   { decls :: Array (Declaration e)
@@ -214,7 +241,8 @@ newtype ModuleBody e = ModuleBody
   , end :: SourcePos
   }
 
-derive instance newtypeModuleBody :: Newtype (ModuleBody e) _
+derive instance Newtype (ModuleBody e) _
+derive newtype instance Eq e => Eq (ModuleBody e)
 
 data Export e
   = ExportValue (Name Ident)
@@ -226,9 +254,15 @@ data Export e
   | ExportModule SourceToken (Name ModuleName)
   | ExportError e
 
+derive instance Generic (Export e) _
+derive instance Eq e => Eq (Export e)
+
 data DataMembers
   = DataAll SourceToken
   | DataEnumerated (Delimited (Name Proper))
+
+derive instance Generic DataMembers _
+derive instance Eq DataMembers
 
 data Declaration e
   = DeclData (DataHead e) (Maybe (Tuple SourceToken (Separated (DataCtor e))))
@@ -245,16 +279,23 @@ data Declaration e
   | DeclRole SourceToken SourceToken (Name Proper) (NonEmptyArray (Tuple SourceToken Role))
   | DeclError e
 
+derive instance Generic (Declaration e) _
+derive instance Eq e => Eq (Declaration e)
+
 newtype Instance e = Instance
   { head :: InstanceHead e
   , body :: Maybe (Tuple SourceToken (NonEmptyArray (InstanceBinding e)))
   }
 
-derive instance newtypeInstance :: Newtype (Instance e) _
+derive instance Newtype (Instance e) _
+derive newtype instance Eq e => Eq (Instance e)
 
 data InstanceBinding e
   = InstanceBindingSignature (Labeled (Name Ident) (Type e))
   | InstanceBindingName (ValueBindingFields e)
+
+derive instance Generic (InstanceBinding e) _
+derive instance Eq e => Eq (InstanceBinding e)
 
 newtype ImportDecl e = ImportDecl
   { keyword :: SourceToken
@@ -263,7 +304,8 @@ newtype ImportDecl e = ImportDecl
   , qualified :: Maybe (Tuple SourceToken (Name ModuleName))
   }
 
-derive instance newtypeImportDecl :: Newtype (ImportDecl e) _
+derive instance Newtype (ImportDecl e) _
+derive newtype instance Eq e => Eq (ImportDecl e)
 
 data Import e
   = ImportValue (Name Ident)
@@ -273,6 +315,9 @@ data Import e
   | ImportClass SourceToken (Name Proper)
   | ImportKind SourceToken (Name Proper)
   | ImportError e
+
+derive instance Generic (Import e) _
+derive instance Eq e => Eq (Import e)
 
 type DataHead e =
   { keyword :: SourceToken
@@ -285,7 +330,8 @@ newtype DataCtor e = DataCtor
   , fields :: Array (Type e)
   }
 
-derive instance newtypeDataCtor :: Newtype (DataCtor e) _
+derive instance Newtype (DataCtor e) _
+derive newtype instance Eq e => Eq (DataCtor e)
 
 type ClassHead e =
   { keyword :: SourceToken
@@ -298,6 +344,9 @@ type ClassHead e =
 data ClassFundep
   = FundepDetermined SourceToken (NonEmptyArray (Name Ident))
   | FundepDetermines (NonEmptyArray (Name Ident)) SourceToken (NonEmptyArray (Name Ident))
+
+derive instance Generic ClassFundep _
+derive instance Eq ClassFundep
 
 type InstanceHead e =
   { keyword :: SourceToken
@@ -312,9 +361,15 @@ data Fixity
   | Infixl
   | Infixr
 
+derive instance Generic Fixity _
+derive instance Eq Fixity
+
 data FixityOp
   = FixityValue (QualifiedName (Either Ident Proper)) SourceToken (Name Operator)
   | FixityType SourceToken (QualifiedName Proper) SourceToken (Name Operator)
+
+derive instance Generic FixityOp _
+derive instance Eq FixityOp
 
 type FixityFields =
   { keyword :: Tuple SourceToken Fixity
@@ -332,6 +387,9 @@ data Guarded e
   = Unconditional SourceToken (Where e)
   | Guarded (NonEmptyArray (GuardedExpr e))
 
+derive instance Generic (Guarded e) _
+derive instance Eq e => Eq (Guarded e)
+
 newtype GuardedExpr e = GuardedExpr
   { bar :: SourceToken
   , patterns :: Separated (PatternGuard e)
@@ -339,24 +397,32 @@ newtype GuardedExpr e = GuardedExpr
   , where :: Where e
   }
 
-derive instance newtypeGuardedExpr :: Newtype (GuardedExpr e) _
+derive instance Newtype (GuardedExpr e) _
+derive newtype instance Eq e => Eq (GuardedExpr e)
 
 newtype PatternGuard e = PatternGuard
   { binder :: Maybe (Tuple (Binder e) SourceToken)
   , expr :: Expr e
   }
 
-derive instance newtypePatternGuard :: Newtype (PatternGuard e) _
+derive instance Newtype (PatternGuard e) _
+derive newtype instance Eq e => Eq (PatternGuard e)
 
 data Foreign e
   = ForeignValue (Labeled (Name Ident) (Type e))
   | ForeignData SourceToken (Labeled (Name Proper) (Type e))
   | ForeignKind SourceToken (Name Proper)
 
+derive instance Generic (Foreign e) _
+derive instance Eq e => Eq (Foreign e)
+
 data Role
   = Nominal
   | Representational
   | Phantom
+
+derive instance Generic Role _
+derive instance Eq Role
 
 data Expr e
   = ExprHole (Name Ident)
@@ -387,13 +453,22 @@ data Expr e
   | ExprAdo (AdoBlock e)
   | ExprError e
 
+derive instance Generic (Expr e) _
+derive instance Eq e => Eq (Expr e)
+
 data RecordLabeled a
   = RecordPun (Name Ident)
   | RecordField (Name Label) SourceToken a
 
+derive instance Generic (RecordLabeled e) _
+derive instance Eq e => Eq (RecordLabeled e)
+
 data RecordUpdate e
   = RecordUpdateLeaf (Name Label) SourceToken (Expr e)
   | RecordUpdateBranch (Name Label) (DelimitedNonEmpty (RecordUpdate e))
+  
+derive instance Generic (RecordUpdate e) _
+derive instance Eq e => Eq (RecordUpdate e)
 
 type RecordAccessor e =
   { expr :: Expr e
@@ -436,13 +511,17 @@ newtype Where e = Where
   , bindings :: Maybe (Tuple SourceToken (NonEmptyArray (LetBinding e)))
   }
 
-derive instance newtypeWhere :: Newtype (Where e) _
+derive instance Newtype (Where e) _
+derive newtype instance Eq e => Eq (Where e)
 
 data LetBinding e
   = LetBindingSignature (Labeled (Name Ident) (Type e))
   | LetBindingName (ValueBindingFields e)
   | LetBindingPattern (Binder e) SourceToken (Where e)
   | LetBindingError e
+
+derive instance Generic (LetBinding e) _
+derive instance Eq e => Eq (LetBinding e)
 
 type DoBlock e =
   { keyword :: SourceToken
@@ -454,6 +533,9 @@ data DoStatement e
   | DoDiscard (Expr e)
   | DoBind (Binder e) SourceToken (Expr e)
   | DoError e
+
+derive instance Generic (DoStatement e) _
+derive instance Eq e => Eq (DoStatement e)
 
 type AdoBlock e =
   { keyword :: SourceToken
@@ -478,3 +560,6 @@ data Binder e
   | BinderTyped (Binder e) SourceToken (Type e)
   | BinderOp (Binder e) (NonEmptyArray (Tuple (QualifiedName Operator) (Binder e)))
   | BinderError e
+
+derive instance Generic (Binder e) _
+derive instance Eq e => Eq (Binder e)
