@@ -44,9 +44,11 @@ main = launchAff_ do
       case parseModule contents of
         ParseSucceeded _ -> do
           Console.log "Parse succeeded."
-        ParseSucceededWithErrors _ errs ->
+        ParseSucceededWithErrors _ errs -> do
+          Console.log "Parse succeeded with errors."
           for_ errs $ Console.error <<< printPositionedError
-        ParseFailed err ->
+        ParseFailed err -> do
+          Console.log "Parse failed."
           Console.error $ printPositionedError err
     Nothing ->
       Console.log "File path required"

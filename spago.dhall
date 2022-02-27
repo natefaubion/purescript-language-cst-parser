@@ -1,12 +1,14 @@
 { name = "language-cst-parser"
 , dependencies =
   [ "arrays"
+  , "console"
   , "const"
   , "control"
   , "effect"
   , "either"
   , "foldable-traversable"
   , "free"
+  , "functions"
   , "functors"
   , "identity"
   , "integers"
@@ -14,6 +16,7 @@
   , "lists"
   , "maybe"
   , "newtype"
+  , "node-process"
   , "numbers"
   , "ordered-collections"
   , "partial"
@@ -28,5 +31,5 @@
   , "unsafe-coerce"
   ]
 , packages = ./packages.dhall
-, sources = [ "src/**/*.purs" ]
+, sources = [ "src/**/*.purs", "test/**/Main.purs" ]
 }

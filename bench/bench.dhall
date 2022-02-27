@@ -1,7 +1,7 @@
 let conf = ../spago.dhall
 
 in conf // {
-  sources = conf.sources # [ "bench/**/*.purs" ],
+  sources = [ "src/**/*.purs", "bench/**/*.purs" ],
   dependencies =
     [ "aff"
     , "arrays"
@@ -12,6 +12,7 @@ in conf // {
     , "either"
     , "foldable-traversable"
     , "free"
+    , "functions"
     , "functors"
     , "identity"
     , "integers"

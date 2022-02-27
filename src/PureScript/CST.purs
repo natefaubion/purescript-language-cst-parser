@@ -93,8 +93,8 @@ parsePartialModule src =
                 pure $ Module { header, body }
           }
       Right $ Tuple res state.errors
-    ParseFail error position _ _ ->
-      Left { error, position }
+    ParseFail error _ ->
+      Left error
 
 printModule :: forall e. TokensOf e => Module e -> String
 printModule mod =

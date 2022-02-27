@@ -26,7 +26,7 @@ import Data.Tuple (Tuple(..), uncurry)
 import Prim as P
 import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
 import PureScript.CST.Layout (currentIndent)
-import PureScript.CST.Parser.Monad (Parser, Recovery(..), eof, lookAhead, many, optional, recover, take, try)
+import PureScript.CST.Parser.Monad (Parser, eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), IntValue(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
@@ -1146,30 +1146,37 @@ reservedKeywords = Set.fromFoldable
   ]
 
 recoverIndent :: forall a. (RecoveredError -> a) -> Parser a -> Parser a
-recoverIndent mkNode = recover \{ position, error } ->
-  map (\tokens -> mkNode (RecoveredError { position, error, tokens })) <<< recoverTokensWhile \tok indent ->
-    case tok.value of
-      TokLayoutEnd col -> col > indent
-      TokLayoutSep col -> col > indent
-      _ -> true
+recoverIndent mkNode = recover \{ position, error } stream -> do
+  let
+    Tuple tokens newStream = recoverTokensWhile
+      ( \tok indent -> case tok.value of
+          TokLayoutEnd col -> col > indent
+          TokLayoutSep col -> col > indent
+          _ -> true
+      )
+      stream
+  if Array.null tokens then
+    Nothing
+  else
+    Just (Tuple (mkNode (RecoveredError { position, error, tokens })) newStream)
 
-recoverTokensWhile :: (SourceToken -> Int -> Boolean) -> TokenStream -> Recovery (Array SourceToken)
+recoverTokensWhile :: (SourceToken -> Int -> Boolean) -> TokenStream -> Tuple (Array SourceToken) TokenStream
 recoverTokensWhile p initStream = go [] initStream
   where
   indent :: Int
   indent = maybe 0 _.column $ currentIndent $ layoutStack initStream
 
-  go :: Array SourceToken -> TokenStream -> Recovery (Array SourceToken)
+  go :: Array SourceToken -> TokenStream -> Tuple (Array SourceToken) TokenStream
   go acc stream = case TokenStream.step stream of
-    TokenError errPos _ _ _ ->
-      Recovery acc errPos stream
-    TokenEOF eofPos _ ->
-      Recovery acc eofPos stream
+    TokenError _ _ _ _ ->
+      Tuple acc stream
+    TokenEOF _ _ ->
+      Tuple acc stream
     TokenCons tok _ nextStream _ ->
       if p tok indent then
         go (Array.snoc acc tok) nextStream
       else
-        Recovery acc tok.range.start stream
+        Tuple acc stream
 
 recoverDecl :: RecoveryStrategy Declaration
 recoverDecl = recoverIndent DeclError

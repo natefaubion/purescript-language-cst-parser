@@ -6,9 +6,11 @@ module PureScript.CST.Lexer
 
 import Prelude
 
-import Control.Alt (class Alt, (<|>))
-import Data.Array as Array
+import Control.Alt (class Alt, alt)
+import Control.Monad.ST as ST
+import Control.Monad.ST.Ref as STRef
 import Data.Array.NonEmpty as NonEmptyArray
+import Data.Array.ST as STArray
 import Data.Char as Char
 import Data.Either (Either(..))
 import Data.Foldable (fold, foldl, foldMap)
@@ -31,6 +33,8 @@ import PureScript.CST.Errors (ParseError(..))
 import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, insertLayout)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, step, unwindLayout)
 import PureScript.CST.Types (Comment(..), IntValue(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
+
+infixr 3 alt as <|>
 
 data LexResult e a
   = LexFail e String
@@ -147,18 +151,29 @@ satisfy mkErr p = Lex \str ->
       LexFail (\_ -> mkErr (mkUnexpected str)) str
 
 many :: forall e a. Lex e a -> Lex e (Array a)
-many (Lex k) = Lex \str -> do
-  let
-    go acc str' =
-      case k str' of
-        LexFail err str''
-          | SCU.length str' == SCU.length str'' ->
-              LexSucc acc str'
-          | otherwise ->
-              LexFail err str''
-        LexSucc a str'' ->
-          go (Array.snoc acc a) str''
-  go [] str
+many (Lex k) = Lex \str -> ST.run do
+  valuesRef <- STArray.new
+  strRef <- STRef.new str
+  contRef <- STRef.new true
+  resRef <- STRef.new (LexSucc [] str)
+  ST.while (STRef.read contRef) do
+    str' <- STRef.read strRef
+    case k str' of
+      LexFail error str''
+        | SCU.length str' == SCU.length str'' -> do
+            values <- STArray.unsafeFreeze valuesRef
+            _ <- STRef.write (LexSucc values str'') resRef
+            _ <- STRef.write false contRef
+            pure unit
+        | otherwise -> do
+            _ <- STRef.write (LexFail error str'') resRef
+            _ <- STRef.write false contRef
+            pure unit
+      LexSucc a str'' -> do
+        _ <- STArray.push a valuesRef
+        _ <- STRef.write str'' strRef
+        pure unit
+  STRef.read resRef
 
 fail :: forall a. ParseError -> Lex LexError a
 fail = Lex <<< LexFail <<< const
@@ -369,9 +384,9 @@ token =
     <|> tokenComma
   where
   parseModuleName = ado
-    parts <- many (try (parseProper <* charDot))
+    prefix <- parseModuleNamePrefix
     name <- parseName
-    in name (toModuleName parts)
+    in name (toModuleName prefix)
 
   parseName :: Lex _ (Maybe ModuleName -> Token)
   parseName =
@@ -460,6 +475,9 @@ token =
   parseHole = ado
     ident <- try $ charQuestionMark *> (parseIdent <|> parseProper)
     in TokHole ident
+
+  parseModuleNamePrefix =
+    regex (LexExpected "module name") "(?:(?:\\p{Lu}[\\p{L}0-9_']*)\\.)*"
 
   parseProper =
     regex (LexExpected "proper name") "\\p{Lu}[\\p{L}0-9_']*"
@@ -566,8 +584,8 @@ token =
 
   parseNumber = do
     intPart <- intPartRegex
-    fractionPart <- optional (try (charDot *> fractionPartRegex))
-    exponentPart <- optional (charExponent *> parseExponentPart)
+    fractionPart <- parseNumberFractionPart
+    exponentPart <- parseNumberExponentPart
     if isNothing fractionPart && isNothing exponentPart then do
       let intVal = stripUnderscores intPart
       case Int.fromString intVal of
@@ -586,6 +604,12 @@ token =
           pure $ TokNumber raw number
         Nothing ->
           fail $ LexNumberOutOfRange raw
+
+  parseNumberFractionPart =
+    optional (try (charDot *> fractionPartRegex))
+
+  parseNumberExponentPart =
+    optional (charExponent *> parseExponentPart)
 
   parseExponentPart = ado
     sign <- optional parseExponentSign
@@ -656,7 +680,7 @@ token =
   charAny =
     satisfy (LexExpected "char") (const true)
 
-toModuleName :: Array String -> Maybe ModuleName
+toModuleName :: String -> Maybe ModuleName
 toModuleName = case _ of
-  [] -> Nothing
-  mn -> Just $ ModuleName $ String.joinWith "." mn
+  "" -> Nothing
+  mn -> Just $ ModuleName $ SCU.dropRight 1 mn
