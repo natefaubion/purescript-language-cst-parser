@@ -1,7 +1,7 @@
 let conf = ../spago.dhall
 
 in conf // {
-  sources = conf.sources # [ "parse-package-set/**/*.purs" ],
+  sources = [ "src/**/*.purs", "parse-package-set/**/*.purs" ],
   dependencies =
     [ "aff"
     , "arrays"
@@ -16,6 +16,7 @@ in conf // {
     , "filterable"
     , "foldable-traversable"
     , "free"
+    , "functions"
     , "functors"
     , "identity"
     , "integers"

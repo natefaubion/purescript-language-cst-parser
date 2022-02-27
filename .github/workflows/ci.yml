@@ -30,6 +30,9 @@ jobs:
       - name: Build source
         run: spago build --purs-args '--censor-lib --strict'
 
+      - name: Run tests
+        run: spago test
+
       - name: Check formatting
         run: npm run check
 
@@ -37,4 +40,4 @@ jobs:
         run: npm run parse-package-set
 
       - name: Run file benchmark
-        run: npm run bench-file test/Main.purs
+        run: npm run bench-file src/PureScript/CST/Parser.purs
