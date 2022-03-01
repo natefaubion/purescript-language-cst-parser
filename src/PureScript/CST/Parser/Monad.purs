@@ -21,13 +21,11 @@ import Prelude
 
 import Control.Alt (class Alt, (<|>))
 import Control.Lazy (class Lazy)
-import Control.Monad.ST as ST
-import Control.Monad.ST.Internal as STRef
 import Data.Array as Array
-import Data.Array.ST as STArray
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn2, Fn4, mkFn2, mkFn4, runFn2, runFn4)
 import Data.Lazy as Lazy
+import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Errors (ParseError(..))
@@ -208,41 +206,25 @@ lookAhead (Parser p) = Parser
   )
 
 many :: forall a. Parser a -> Parser (Array a)
-many parser = Parser
-  ( mkFn4 \state1 _ resume done -> do
+many (Parser p) = Parser
+  ( mkFn4 \state1 more resume done -> do
       let
-        result = ST.run do
-          valuesRef <- STArray.new
-          stateRef <- STRef.new state1
-          contRef <- STRef.new true
-          resRef <- STRef.new (ParseSucc [] state1)
-          ST.while (STRef.read contRef) do
-            state2 <- STRef.read stateRef
-            let
-              state2' =
-                if state2.consumed then state2 { consumed = false }
-                else state2
-            case runParser' state2' parser of
-              ParseFail error state3 ->
-                if state3.consumed then do
-                  _ <- STRef.write (ParseFail error state3) resRef
-                  _ <- STRef.write false contRef
-                  pure unit
-                else do
-                  values <- STArray.unsafeFreeze valuesRef
-                  _ <- STRef.write (ParseSucc values state2) resRef
-                  _ <- STRef.write false contRef
-                  pure unit
-              ParseSucc value state3 -> do
-                _ <- STArray.push value valuesRef
-                _ <- STRef.write state3 stateRef
-                pure unit
-          STRef.read resRef
-      case result of
-        ParseFail error state2 ->
-          runFn2 resume state2 error
-        ParseSucc values state2 ->
-          runFn2 done state2 values
+        go = mkFn2 \acc state2 -> do
+          let
+            state2' =
+              if state2.consumed then state2 { consumed = false }
+              else state2
+          runFn4 p state2' more
+            ( mkFn2 \state3 error ->
+                if state3.consumed then
+                  runFn2 resume state3 error
+                else
+                  runFn2 done state3 (Array.reverse (List.toUnfoldable acc))
+            )
+            ( mkFn2 \state3 value ->
+                runFn2 go (List.Cons value acc) state3
+            )
+      runFn2 go List.Nil state1
   )
 
 optional :: forall a. Parser a -> Parser (Maybe a)

@@ -17,7 +17,7 @@ import PureScript.CST (parseModule)
 
 main :: Effect Unit
 main = launchAff_ do
-  args <- Array.drop 2 <$> liftEffect Process.argv
+  args <- Array.drop 1 <$> liftEffect Process.argv
   case Array.head args of
     Just fileName -> do
       contents <- liftEffect <<< Buffer.toString UTF8 =<< readFile fileName
