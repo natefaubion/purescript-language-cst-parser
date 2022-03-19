@@ -442,6 +442,7 @@ parseTypeAtom = defer \_ ->
   TypeVar <$> parseIdent
     <|> TypeConstructor <$> parseQualifiedProper
     <|> uncurry TypeString <$> parseString
+    <|> uncurry TypeInt <$> parseInt
     <|> parseTypeParens
     <|> TypeRecord <$> braces parseRow
     <|> TypeOpName <$> parseQualifiedSymbol

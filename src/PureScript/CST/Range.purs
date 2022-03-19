@@ -143,6 +143,8 @@ instance rangeOfType :: RangeOf e => RangeOf (Type e) where
       rangeOf n
     TypeString t _ ->
       t.range
+    TypeInt t _ ->
+      t.range
     TypeRow w ->
       rangeOf w
     TypeRecord w ->
@@ -195,6 +197,8 @@ instance tokensOfType :: TokensOf e => TokensOf (Type e) where
     TypeHole n ->
       tokensOf n
     TypeString t _ ->
+      singleton t
+    TypeInt t _ ->
       singleton t
     TypeRow w ->
       tokensOf w
