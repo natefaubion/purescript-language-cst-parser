@@ -179,10 +179,6 @@ instance rangeOfType :: RangeOf e => RangeOf (Type e) where
       }
     TypeParens w ->
       rangeOf w
-    TypeUnaryRow t ty ->
-      { start: t.range.start
-      , end: (rangeOf ty).end
-      }
     TypeError e ->
       rangeOf e
 
@@ -230,8 +226,6 @@ instance tokensOfType :: TokensOf e => TokensOf (Type e) where
         <> defer \_ -> singleton t <> tokensOf ty2
     TypeParens w ->
       tokensOf w
-    TypeUnaryRow t ty ->
-      cons t $ defer \_ -> tokensOf ty
     TypeError e ->
       tokensOf e
 

@@ -178,7 +178,6 @@ data Type e
   | TypeArrowName SourceToken
   | TypeConstrained (Type e) SourceToken (Type e)
   | TypeParens (Wrapped (Type e))
-  | TypeUnaryRow SourceToken (Type e)
   | TypeError e
 
 data TypeVarBinding e

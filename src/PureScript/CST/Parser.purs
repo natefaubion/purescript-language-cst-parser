@@ -424,8 +424,7 @@ parseType3 = defer \_ -> do
 
 parseType4 :: Parser (Recovered Type)
 parseType4 = defer \_ ->
-  TypeUnaryRow <$> tokKeyOperator "#" <*> parseType4
-    <|> parseType5
+  parseType5
 
 parseType5 :: Parser (Recovered Type)
 parseType5 = defer \_ -> do
