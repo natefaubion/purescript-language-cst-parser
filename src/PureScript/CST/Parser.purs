@@ -135,7 +135,6 @@ parseExport =
   ExportTypeOp <$> tokKeyword "type" <*> parseSymbol
     <|> ExportClass <$> tokKeyword "class" <*> parseProper
     <|> ExportModule <$> tokKeyword "module" <*> parseModuleName
-    <|> try (ExportKind <$> tokKeyword "kind" <*> parseProper)
     <|> ExportOp <$> parseSymbol
     <|> ExportValue <$> parseIdent
     <|> ExportType <$> parseProper <*> optional parseDataMembers
@@ -154,7 +153,6 @@ parseImport =
     <|> ImportType <$> parseProper <*> optional parseDataMembers
     <|> ImportTypeOp <$> tokKeyword "type" <*> parseSymbol
     <|> ImportClass <$> tokKeyword "class" <*> parseProper
-    <|> ImportKind <$> tokKeyword "kind" <*> parseProper
     <|> ImportValue <$> parseIdent
 
 parseDataMembers :: Parser DataMembers

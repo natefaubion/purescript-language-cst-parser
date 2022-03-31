@@ -223,7 +223,6 @@ data Export e
   | ExportType (Name Proper) (Maybe DataMembers)
   | ExportTypeOp SourceToken (Name Operator)
   | ExportClass SourceToken (Name Proper)
-  | ExportKind SourceToken (Name Proper)
   | ExportModule SourceToken (Name ModuleName)
   | ExportError e
 
@@ -272,7 +271,6 @@ data Import e
   | ImportType (Name Proper) (Maybe DataMembers)
   | ImportTypeOp SourceToken (Name Operator)
   | ImportClass SourceToken (Name Proper)
-  | ImportKind SourceToken (Name Proper)
   | ImportError e
 
 type DataHead e =

@@ -276,10 +276,6 @@ instance rangeOfExport :: RangeOf e => RangeOf (Export e) where
       { start: t.range.start
       , end: (rangeOf n).end
       }
-    ExportKind t n ->
-      { start: t.range.start
-      , end: (rangeOf n).end
-      }
     ExportModule t n ->
       { start: t.range.start
       , end: (rangeOf n).end
@@ -298,8 +294,6 @@ instance tokensOfExport :: TokensOf e => TokensOf (Export e) where
     ExportTypeOp t n ->
       cons t $ tokensOf n
     ExportClass t n ->
-      cons t $ tokensOf n
-    ExportKind t n ->
       cons t $ tokensOf n
     ExportModule t n ->
       cons t $ tokensOf n
@@ -365,10 +359,6 @@ instance rangeOfImport :: RangeOf e => RangeOf (Import e) where
       { start: t.range.start
       , end: (rangeOf n).end
       }
-    ImportKind t n ->
-      { start: t.range.start
-      , end: (rangeOf n).end
-      }
     ImportError e ->
       rangeOf e
 
@@ -383,8 +373,6 @@ instance tokensOfImport :: TokensOf e => TokensOf (Import e) where
     ImportTypeOp t n ->
       cons t $ tokensOf n
     ImportClass t n ->
-      cons t $ tokensOf n
-    ImportKind t n ->
       cons t $ tokensOf n
     ImportError e ->
       tokensOf e
