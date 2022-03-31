@@ -852,6 +852,8 @@ parseIdentBinder = do
 
 parseLabel :: Parser (Name Label)
 parseLabel = expectMap case _ of
+  tok@{ value: TokRawString label } ->
+    Just $ Name { token: tok, name: Label label }
   tok@{ value: TokString _ label } ->
     Just $ Name { token: tok, name: Label label }
   tok@{ value: TokLowerName Nothing label } ->

@@ -5,7 +5,7 @@ import Prim hiding (Type)
 
 import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
-import Data.Maybe (maybe)
+import Data.Maybe (Maybe(..), maybe)
 import Data.String (Pattern(..))
 import Data.String as String
 import Data.String.CodeUnits as SCU
@@ -13,7 +13,7 @@ import Effect (Effect)
 import Effect.Class.Console as Console
 import Node.Process as Process
 import PureScript.CST (RecoveredParserResult(..), parseBinder, parseDecl, parseExpr, parseModule, parseType)
-import PureScript.CST.Types (Binder, Declaration(..), DoStatement(..), Expr(..), LetBinding(..), Module(..), ModuleBody(..), Type)
+import PureScript.CST.Types (Binder, Declaration(..), DoStatement(..), Expr(..), Guarded(..), Label(..), LetBinding(..), Module(..), ModuleBody(..), Name(..), RecordLabeled(..), Separated(..), Token(..), Type, Where(..), Wrapped(..))
 
 class ParseFor f where
   parseFor :: String -> RecoveredParserResult f
@@ -110,3 +110,42 @@ main = do
             true
       _ ->
         false
+
+  assertParse "Records with raw string labels"
+    ("""
+    module Foo where
+    rec = { """ <> "\"\"\"key\"\"\"" <> """: val }
+    """)
+    \x ->
+      case x of
+        ParseSucceeded
+          ( Module
+              { body: ModuleBody
+                  { decls:
+                      [ DeclValue
+                          { guarded: Unconditional _
+                              ( Where
+                                  { expr: ExprRecord
+                                      ( Wrapped
+                                          { value: Just
+                                              ( Separated
+                                                  { head: RecordField
+                                                      ( Name
+                                                          { name: Label "key", token: { value: TokRawString "key" } }
+                                                      )
+                                                      _
+                                                      _
+                                                  }
+                                              )
+                                          }
+                                      )
+                                  }
+                              )
+                          }
+                      ]
+                  }
+              }
+          ) -> do
+          true
+        _ ->
+          false
