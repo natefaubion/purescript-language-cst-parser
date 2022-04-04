@@ -219,7 +219,7 @@ many (Parser p) = Parser
                 if state3.consumed then
                   runFn2 resume state3 error
                 else
-                  runFn2 done state3 (Array.reverse (List.toUnfoldable acc))
+                  runFn2 done state2 (Array.reverse (List.toUnfoldable acc))
             )
             ( mkFn2 \state3 value ->
                 runFn2 go (List.Cons value acc) state3

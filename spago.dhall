@@ -21,7 +21,6 @@
   , "ordered-collections"
   , "partial"
   , "prelude"
-  , "psci-support"
   , "st"
   , "strings"
   , "transformers"
