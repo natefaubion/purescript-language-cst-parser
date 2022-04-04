@@ -110,3 +110,13 @@ main = do
             true
       _ ->
         false
+
+  assertParse "Failed mismatched parens"
+    """
+    wat (bad
+    """
+    case _ of
+      (ParseFailed _ :: RecoveredParserResult Expr) ->
+        true
+      _ ->
+        false
