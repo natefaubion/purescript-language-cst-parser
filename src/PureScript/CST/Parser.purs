@@ -135,7 +135,6 @@ parseExport =
   ExportTypeOp <$> tokKeyword "type" <*> parseSymbol
     <|> ExportClass <$> tokKeyword "class" <*> parseProper
     <|> ExportModule <$> tokKeyword "module" <*> parseModuleName
-    <|> try (ExportKind <$> tokKeyword "kind" <*> parseProper)
     <|> ExportOp <$> parseSymbol
     <|> ExportValue <$> parseIdent
     <|> ExportType <$> parseProper <*> optional parseDataMembers
@@ -154,7 +153,6 @@ parseImport =
     <|> ImportType <$> parseProper <*> optional parseDataMembers
     <|> ImportTypeOp <$> tokKeyword "type" <*> parseSymbol
     <|> ImportClass <$> tokKeyword "class" <*> parseProper
-    <|> ImportKind <$> tokKeyword "kind" <*> parseProper
     <|> ImportValue <$> parseIdent
 
 parseDataMembers :: Parser DataMembers
@@ -426,8 +424,7 @@ parseType3 = defer \_ -> do
 
 parseType4 :: Parser (Recovered Type)
 parseType4 = defer \_ ->
-  TypeUnaryRow <$> tokKeyOperator "#" <*> parseType4
-    <|> parseType5
+  parseType5
 
 parseType5 :: Parser (Recovered Type)
 parseType5 = defer \_ -> do
@@ -442,6 +439,7 @@ parseTypeAtom = defer \_ ->
   TypeVar <$> parseIdent
     <|> TypeConstructor <$> parseQualifiedProper
     <|> uncurry TypeString <$> parseString
+    <|> uncurry TypeInt <$> parseInt
     <|> parseTypeParens
     <|> TypeRecord <$> braces parseRow
     <|> TypeOpName <$> parseQualifiedSymbol

@@ -166,6 +166,7 @@ data Type e
   | TypeWildcard SourceToken
   | TypeHole (Name Ident)
   | TypeString SourceToken String
+  | TypeInt SourceToken IntValue
   | TypeRow (Wrapped (Row e))
   | TypeRecord (Wrapped (Row e))
   | TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)
@@ -177,7 +178,6 @@ data Type e
   | TypeArrowName SourceToken
   | TypeConstrained (Type e) SourceToken (Type e)
   | TypeParens (Wrapped (Type e))
-  | TypeUnaryRow SourceToken (Type e)
   | TypeError e
 
 data TypeVarBinding e
@@ -222,7 +222,6 @@ data Export e
   | ExportType (Name Proper) (Maybe DataMembers)
   | ExportTypeOp SourceToken (Name Operator)
   | ExportClass SourceToken (Name Proper)
-  | ExportKind SourceToken (Name Proper)
   | ExportModule SourceToken (Name ModuleName)
   | ExportError e
 
@@ -271,7 +270,6 @@ data Import e
   | ImportType (Name Proper) (Maybe DataMembers)
   | ImportTypeOp SourceToken (Name Operator)
   | ImportClass SourceToken (Name Proper)
-  | ImportKind SourceToken (Name Proper)
   | ImportError e
 
 type DataHead e =

@@ -299,7 +299,6 @@ traverseType k = case _ of
   TypeArrow typ1 tok typ2 -> TypeArrow <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeConstrained typ1 tok typ2 -> TypeConstrained <$> k.onType typ1 <@> tok <*> k.onType typ2
   TypeParens wrapped -> TypeParens <$> traverseWrapped k.onType wrapped
-  TypeUnaryRow tok typ -> TypeUnaryRow tok <$> k.onType typ
   typ -> pure typ
 
 traverseRow
