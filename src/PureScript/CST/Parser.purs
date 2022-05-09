@@ -258,7 +258,7 @@ parseDeclClassSignature keyword = do
 
 parseDeclClass1 :: SourceToken -> Parser (Recovered Declaration)
 parseDeclClass1 keyword = do
-  super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> tokLeftFatArrow
+  super <- optional $ try $ Tuple <$> parseClassConstraints parseType4 <*> tokLeftFatArrow
   name <- parseProper
   vars <- many parseTypeVarBinding
   fundeps <- optional $ Tuple <$> tokPipe <*> separated tokComma parseFundep
@@ -423,11 +423,7 @@ parseType3 = defer \_ -> do
     Just os -> TypeOp ty os
 
 parseType4 :: Parser (Recovered Type)
-parseType4 = defer \_ ->
-  parseType5
-
-parseType5 :: Parser (Recovered Type)
-parseType5 = defer \_ -> do
+parseType4 = defer \_ -> do
   ty <- parseTypeAtom
   args <- many parseTypeAtom
   pure case NonEmptyArray.fromArray args of

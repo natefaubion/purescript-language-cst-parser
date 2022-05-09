@@ -144,3 +144,18 @@ main = do
         true
       _ ->
         false
+
+  assertParse "Negative type-level integers"
+    """
+    cons ∷
+      ∀ len len_plus_1 elem.
+      Add 1 len len_plus_1 ⇒
+      Compare len (-1) GT =>
+      elem → Vect len elem → Vect len_plus_1 elem
+    cons elem (Vect arr) = Vect (A.cons elem arr)
+    """
+    case _ of
+      (ParseSucceeded _ :: RecoveredParserResult Declaration) ->
+        true
+      _ ->
+        false
