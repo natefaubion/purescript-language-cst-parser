@@ -35,7 +35,6 @@ in conf // {
     , "parallel"
     , "partial"
     , "prelude"
-    , "psci-support"
     , "st"
     , "strings"
     , "transformers"

@@ -29,7 +29,6 @@ in conf // {
     , "ordered-collections"
     , "partial"
     , "prelude"
-    , "psci-support"
     , "st"
     , "strings"
     , "strings"
