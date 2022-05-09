@@ -7,8 +7,8 @@
     "check": "purs-tidy check src test bench parse-package-set"
   },
   "devDependencies": {
-    "purescript": "^0.14.0",
-    "purs-tidy": "^0.3.0",
-    "spago": "^0.19.1"
+    "purescript": "^0.15.0",
+    "purs-tidy": "^0.8.0",
+    "spago": "^0.20.9"
   }
 }
