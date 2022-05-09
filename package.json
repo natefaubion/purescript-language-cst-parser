@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "parse-package-set": "spago -x parse-package-set/parse-package-set.dhall run",
-    "bench-file": "spago -x bench/bench.dhall build && node --expose-gc -e \"require('./output/BenchFile/index.js').main()\"",
+    "bench-file": "spago -x bench/bench.dhall build && node --expose-gc --input-type=\"module\" -e \"import { main } from './output/BenchFile/index.js';main()\"",
     "format": "purs-tidy format-in-place src test bench parse-package-set",
     "check": "purs-tidy check src test bench parse-package-set"
   },
