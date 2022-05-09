@@ -423,8 +423,8 @@ parseType3 = defer \_ -> do
     Just os -> TypeOp ty os
 
 parseType4 :: Parser (Recovered Type)
-parseType4 = defer \_ ->
-  parseType5
+parseType4 = defer \_ -> do
+  parseTypeNegative <|> parseType5
 
 parseType5 :: Parser (Recovered Type)
 parseType5 = defer \_ -> do
@@ -439,7 +439,7 @@ parseTypeAtom = defer \_ ->
   TypeVar <$> parseIdent
     <|> TypeConstructor <$> parseQualifiedProper
     <|> uncurry TypeString <$> parseString
-    <|> uncurry TypeInt <$> parseInt
+    <|> uncurry (TypeInt Nothing) <$> parseInt
     <|> parseTypeParens
     <|> TypeRecord <$> braces parseRow
     <|> TypeOpName <$> parseQualifiedSymbol
@@ -455,6 +455,11 @@ parseTypeParens = do
     <|> parseKindedVar open
     <|> parseTypeParen open
     <|> parseEmptyRow open
+
+parseTypeNegative :: Parser (Recovered Type)
+parseTypeNegative = do
+  negative <- tokKeyOperator "-"
+  uncurry (TypeInt (Just negative)) <$> parseInt
 
 parseRowParen :: SourceToken -> Parser (Recovered Type)
 parseRowParen open = do

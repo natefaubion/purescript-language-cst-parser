@@ -143,8 +143,14 @@ instance rangeOfType :: RangeOf e => RangeOf (Type e) where
       rangeOf n
     TypeString t _ ->
       t.range
-    TypeInt t _ ->
-      t.range
+    TypeInt neg t _ ->
+      case neg of
+        Nothing ->
+          t.range
+        Just n ->
+          { start: n.range.start
+          , end: t.range.end
+          }
     TypeRow w ->
       rangeOf w
     TypeRecord w ->
@@ -194,8 +200,8 @@ instance tokensOfType :: TokensOf e => TokensOf (Type e) where
       tokensOf n
     TypeString t _ ->
       singleton t
-    TypeInt t _ ->
-      singleton t
+    TypeInt neg t _ ->
+      foldMap singleton neg <> singleton t
     TypeRow w ->
       tokensOf w
     TypeRecord w ->

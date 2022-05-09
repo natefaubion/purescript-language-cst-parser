@@ -1,4 +1,6 @@
 { name = "language-cst-parser"
+, license = "MIT"
+, repository = "https://github.com/natefaubion/purescript-language-cst-parser.git"
 , dependencies =
   [ "arrays"
   , "console"
