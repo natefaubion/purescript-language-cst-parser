@@ -166,7 +166,7 @@ data Type e
   | TypeWildcard SourceToken
   | TypeHole (Name Ident)
   | TypeString SourceToken String
-  | TypeInt SourceToken IntValue
+  | TypeInt (Maybe SourceToken) SourceToken IntValue
   | TypeRow (Wrapped (Row e))
   | TypeRecord (Wrapped (Row e))
   | TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)

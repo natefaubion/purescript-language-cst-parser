@@ -10,9 +10,13 @@ import Data.String (Pattern(..))
 import Data.String as String
 import Data.String.CodeUnits as SCU
 import Effect (Effect)
+import Effect.Class.Console (log)
 import Effect.Class.Console as Console
+import Effect.Unsafe (unsafePerformEffect)
 import Node.Process as Process
+import Partial.Unsafe (unsafeCrashWith)
 import PureScript.CST (RecoveredParserResult(..), parseBinder, parseDecl, parseExpr, parseModule, parseType)
+import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Types (Binder, Declaration(..), DoStatement(..), Expr(..), Label(..), LetBinding(..), Module(..), ModuleBody(..), Name(..), RecordLabeled(..), Separated(..), Token(..), Type, Wrapped(..))
 
 class ParseFor f where
@@ -147,15 +151,27 @@ main = do
 
   assertParse "Negative type-level integers"
     """
-    cons ∷
-      ∀ len len_plus_1 elem.
-      Add 1 len len_plus_1 ⇒
-      Compare len (-1) GT =>
-      elem → Vect len elem → Vect len_plus_1 elem
+    cons
+      :: forall len len_plus_1 elem
+       . Add 1 len len_plus_1
+      => Compare len (-1) GT
+      => elem
+      -> Vect len elem
+      -> Vect len_plus_1 elem
     cons elem (Vect arr) = Vect (A.cons elem arr)
     """
     case _ of
       (ParseSucceeded _ :: RecoveredParserResult Declaration) ->
         true
+      (ParseFailed err) -> do
+        let
+          _ =
+            unsafePerformEffect do
+              let
+                print { position, error } =
+                  "[" <> show (position.line + 1) <> ":" <> show (position.column + 1) <> "] " <> printParseError error
+              log (print err)
+
+        false
       _ ->
         false
