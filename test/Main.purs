@@ -10,13 +10,9 @@ import Data.String (Pattern(..))
 import Data.String as String
 import Data.String.CodeUnits as SCU
 import Effect (Effect)
-import Effect.Class.Console (log)
 import Effect.Class.Console as Console
-import Effect.Unsafe (unsafePerformEffect)
 import Node.Process as Process
-import Partial.Unsafe (unsafeCrashWith)
 import PureScript.CST (RecoveredParserResult(..), parseBinder, parseDecl, parseExpr, parseModule, parseType)
-import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Types (Binder, Declaration(..), DoStatement(..), Expr(..), Label(..), LetBinding(..), Module(..), ModuleBody(..), Name(..), RecordLabeled(..), Separated(..), Token(..), Type, Wrapped(..))
 
 class ParseFor f where
@@ -163,15 +159,5 @@ main = do
     case _ of
       (ParseSucceeded _ :: RecoveredParserResult Declaration) ->
         true
-      (ParseFailed err) -> do
-        let
-          _ =
-            unsafePerformEffect do
-              let
-                print { position, error } =
-                  "[" <> show (position.line + 1) <> ":" <> show (position.column + 1) <> "] " <> printParseError error
-              log (print err)
-
-        false
       _ ->
         false
