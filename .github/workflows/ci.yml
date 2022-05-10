@@ -41,3 +41,8 @@ jobs:
 
       - name: Run file benchmark
         run: npm run bench-file src/PureScript/CST/Parser.purs
+
+      - name: Verify pulp & bower
+        run: |
+          npx bower@1.8.14 install --production
+          npx pulp@16.0.0 build

@@ -1,0 +1,36 @@
+{
+  "name": "purescript-language-cst-parser",
+  "license": ["MIT"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/natefaubion/purescript-language-cst-parser.git"
+  },
+  "ignore": ["**/.*", "node_modules", "bower_components", "output"],
+  "dependencies": {
+    "purescript-arrays": "^v7.0.0",
+    "purescript-const": "^v6.0.0",
+    "purescript-control": "^v6.0.0",
+    "purescript-either": "^v6.0.0",
+    "purescript-foldable-traversable": "^v6.0.0",
+    "purescript-free": "^v7.0.0",
+    "purescript-functions": "^v6.0.0",
+    "purescript-functors": "^v5.0.0",
+    "purescript-identity": "^v6.0.0",
+    "purescript-integers": "^v6.0.0",
+    "purescript-lazy": "^v6.0.0",
+    "purescript-lists": "^v7.0.0",
+    "purescript-maybe": "^v6.0.0",
+    "purescript-newtype": "^v5.0.0",
+    "purescript-numbers": "^v9.0.0",
+    "purescript-ordered-collections": "^v3.0.0",
+    "purescript-partial": "^v4.0.0",
+    "purescript-prelude": "^v6.0.0",
+    "purescript-st": "^v6.0.0",
+    "purescript-strings": "^v6.0.0",
+    "purescript-transformers": "^v6.0.0",
+    "purescript-tuples": "^v7.0.0",
+    "purescript-typelevel-prelude": "^v7.0.0",
+    "purescript-unfoldable": "^v6.0.0",
+    "purescript-unsafe-coerce": "^v6.0.0"
+  }
+}
