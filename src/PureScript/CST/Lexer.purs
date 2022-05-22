@@ -293,9 +293,9 @@ bumpToken pos@{ line, column } = case _ of
   TokOperator qual sym ->
     { line, column: column + qualLength qual + String.length sym }
   TokSymbolName qual sym ->
-    { line, column: column + qualLength qual + String.length sym }
+    { line, column: column + qualLength qual + String.length sym + 2 }
   TokSymbolArrow Unicode ->
-    { line, column: column + 1 }
+    { line, column: column + 3 }
   TokSymbolArrow ASCII ->
     { line, column: column + 4 }
   TokHole hole ->
