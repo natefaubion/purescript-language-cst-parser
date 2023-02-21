@@ -25,7 +25,7 @@ import PureScript.CST.Types (SourceToken)
 
 main :: Effect Unit
 main = launchAff_ do
-  args <- Array.drop 2 <$> liftEffect Process.argv
+  args <- Array.drop 1 <$> liftEffect Process.argv
   let printTokens = (elem "--tokens" || elem "-t") args
   case Array.head args of
     Just fileName -> do

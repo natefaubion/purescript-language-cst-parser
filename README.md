@@ -67,8 +67,9 @@ slowest parse times along with the mean parse time for the set.
 npm run parse-package-set
 ```
 
-You can also benchmark a single file:
+You can also benchmark or parse a single file:
 
 ```sh
 npm run bench-file MyModule.purs
+npm run parse-file -- MyModule.purs --tokens
 ```

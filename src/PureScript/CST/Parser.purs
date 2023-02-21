@@ -97,9 +97,11 @@ layoutNonEmpty valueParser = ado
 
 layout :: forall a. Parser a -> Parser (Array a)
 layout valueParser =
-  tokLayoutStart *> values <* tokLayoutEnd
+  tokLayoutStart *> values
   where
-  values = (go =<< valueParser) <|> pure []
+  values =
+    [] <$ tokLayoutEnd
+      <|> (go =<< valueParser) <* tokLayoutEnd
   tail = many (tokLayoutSep *> valueParser)
   go head = Array.cons head <$> tail
 
