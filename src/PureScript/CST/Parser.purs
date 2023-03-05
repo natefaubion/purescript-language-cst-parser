@@ -95,14 +95,6 @@ layoutNonEmpty valueParser = ado
   tail <- many (tokLayoutSep *> valueParser) <* tokLayoutEnd
   in NonEmptyArray.cons' head tail
 
-layout :: forall a. Parser a -> Parser (Array a)
-layout valueParser =
-  tokLayoutStart *> values <* tokLayoutEnd
-  where
-  values = (go =<< valueParser) <|> pure []
-  tail = many (tokLayoutSep *> valueParser)
-  go head = Array.cons head <$> tail
-
 parseModule :: Parser (Recovered Module)
 parseModule = do
   header <- parseModuleHeader
@@ -673,7 +665,20 @@ parseDo = do
 parseAdo :: Parser (Recovered Expr)
 parseAdo = do
   keyword <- tokQualifiedKeyword "ado"
-  statements <- layout (recoverDoStatement parseDoStatement)
+  -- A possibly-empty version of `layoutNonEmpty` to handle empty `ado in`
+  statements <- do
+    let
+      -- `recoverDoStatement` recovers too much if it is immediately
+      -- confronted with `TokLayoutEnd`, since that is associated with a
+      -- `layoutStack` _of the parent_ as opposed to the stuff we actually
+      -- want to recover, which we would correctly guess if we saw a statement
+      -- or two inside the block
+      valueParser = recoverDoStatement parseDoStatement
+      nonEmptyCase =
+        Array.cons <$> valueParser <*> many (tokLayoutSep *> valueParser)
+    _ <- tokLayoutStart
+    -- So we explicitly handle `TokLayoutEnd` ahead of time:
+    [] <$ tokLayoutEnd <|> nonEmptyCase <* tokLayoutEnd
   in_ <- tokKeyword "in"
   result <- parseExpr
   pure $ ExprAdo { keyword, statements, in: in_, result }

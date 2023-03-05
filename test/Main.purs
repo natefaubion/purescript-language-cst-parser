@@ -77,6 +77,77 @@ main = do
       _ ->
         false
 
+  assertParse "Recovered ado statements"
+    """
+    ado
+      foo <- bar
+      a b c +
+      foo
+      in 5
+    """
+    case _ of
+      ParseSucceededWithErrors (ExprAdo { statements }) _
+        | [ DoBind _ _ _
+          , DoError _
+          , DoDiscard _
+          ] <- statements ->
+            true
+      _ ->
+        false
+
+  assertParse "Recovered ado last statement"
+    """
+    ado
+      foo <- bar
+      a b c +
+      in 5
+    """
+    case _ of
+      ParseSucceededWithErrors (ExprAdo { statements }) _
+        | [ DoBind _ _ _
+          , DoError _
+          ] <- statements ->
+            true
+      _ ->
+        false
+
+  assertParse "Recovered ado first statement"
+    """
+    ado
+      a b c +
+      foo <- bar
+      in 5
+    """
+    case _ of
+      ParseSucceededWithErrors (ExprAdo { statements }) _
+        | [ DoError _
+          , DoBind _ _ _
+          ] <- statements ->
+            true
+      _ ->
+        false
+
+  assertParse "Empty ado in"
+    """
+    ado in 1
+    """
+    case _ of
+      (ParseSucceeded _ :: RecoveredParserResult Expr) ->
+        true
+      _ ->
+        false
+
+  assertParse "Empty ado \\n in"
+    """
+    ado
+      in 1
+    """
+    case _ of
+      (ParseSucceeded _ :: RecoveredParserResult Expr) ->
+        true
+      _ ->
+        false
+
   assertParse "Recovered let bindings"
     """
     let
