@@ -676,7 +676,7 @@ parseAdo = do
       valueParser = recoverDoStatement parseDoStatement
       nonEmptyCase =
         Array.cons <$> valueParser <*> many (tokLayoutSep *> valueParser)
-    void tokLayoutStart
+    _ <- tokLayoutStart
     -- So we explicitly handle `TokLayoutEnd` ahead of time:
     [] <$ tokLayoutEnd <|> nonEmptyCase <* tokLayoutEnd
   in_ <- tokKeyword "in"
