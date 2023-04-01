@@ -158,7 +158,7 @@ defaultSpagoDhall :: String
 defaultSpagoDhall = Array.intercalate "\n"
   [ "{ name = \"test-parser\""
   , ", dependencies = [] : List Text"
-  , ", packages = https://github.com/purescript/package-sets/releases/download/psc-0.15.0-20220507/packages.dhall sha256:cf54330f3bc1b25a093b69bff8489180c954b43668c81288901a2ec29a08cc64"
+  , ", packages = https://github.com/purescript/package-sets/releases/download/psc-0.15.7-20230401/packages.dhall sha256:d385eeee6ca160c32d7389a1f4f4ee6a05aff95e81373cdc50670b436efa1060"
   , ", sources = [] : List Text"
   , "}"
   ]
