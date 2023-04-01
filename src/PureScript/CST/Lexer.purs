@@ -13,6 +13,7 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Array.ST as STArray
 import Data.Char as Char
 import Data.Either (Either(..))
+import Data.Enum (toEnum)
 import Data.Foldable (fold, foldl, foldMap)
 import Data.Int (hexadecimal)
 import Data.Int as Int
@@ -23,6 +24,8 @@ import Data.Newtype (unwrap)
 import Data.Number as Number
 import Data.String (Pattern(..), Replacement(..))
 import Data.String as String
+import Data.String.CodePoints (CodePoint)
+import Data.String.CodePoints as SCP
 import Data.String.CodeUnits as SCU
 import Data.String.Regex as Regex
 import Data.String.Regex.Flags (unicode)
@@ -35,6 +38,18 @@ import PureScript.CST.TokenStream (TokenStep(..), TokenStream(..), consTokens, s
 import PureScript.CST.Types (Comment(..), IntValue(..), LineFeed(..), ModuleName(..), SourcePos, SourceStyle(..), Token(..))
 
 infixr 3 alt as <|>
+
+class IsChar a where
+  fromChar :: Char -> a
+  fromCharCode :: Int -> Maybe a
+
+instance IsChar Char where
+  fromChar = identity
+  fromCharCode = Char.fromCharCode
+
+instance IsChar CodePoint where
+  fromChar = SCP.codePointFromChar
+  fromCharCode = toEnum
 
 data LexResult e a
   = LexFail e String
@@ -502,29 +517,37 @@ token =
       _ ->
         pure { raw: SCU.singleton ch, char: ch }
 
+  parseEscape
+    :: forall a
+     . IsChar a
+    => Lex (Unit -> ParseError) { raw :: String, char :: a }
   parseEscape = do
     ch <- charAny
     case ch of
       't' ->
-        pure { raw: "\\t", char: '\t' }
+        pure { raw: "\\t", char: fromChar '\t' }
       'r' ->
-        pure { raw: "\\r", char: '\r' }
+        pure { raw: "\\r", char: fromChar '\r' }
       'n' ->
-        pure { raw: "\\n", char: '\n' }
+        pure { raw: "\\n", char: fromChar '\n' }
       '"' ->
-        pure { raw: "\\\"", char: '"' }
+        pure { raw: "\\\"", char: fromChar '"' }
       '\'' ->
-        pure { raw: "\\'", char: '\'' }
+        pure { raw: "\\'", char: fromChar '\'' }
       '\\' ->
-        pure { raw: "\\\\", char: '\\' }
+        pure { raw: "\\\\", char: fromChar '\\' }
       'x' ->
         parseHexEscape
       _ ->
         fail $ LexInvalidCharEscape $ SCU.singleton ch
 
+  parseHexEscape
+    :: forall a
+     . IsChar a
+    => Lex (Unit -> ParseError) { raw :: String, char :: a }
   parseHexEscape = do
     esc <- hexEscapeRegex
-    case Char.fromCharCode =<< Int.fromStringAs hexadecimal esc of
+    case fromCharCode =<< Int.fromStringAs hexadecimal esc of
       Just ch ->
         pure { raw: "\\x" <> esc, char: ch }
       Nothing ->
@@ -552,7 +575,7 @@ token =
 
   parseStringEscape = ado
     res <- charBackslash *> parseEscape
-    in { raw: res.raw, string: SCU.singleton res.char }
+    in { raw: res.raw, string: SCP.singleton res.char }
 
   parseStringChars = ado
     raw <- stringCharsRegex
