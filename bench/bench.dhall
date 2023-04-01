@@ -10,6 +10,7 @@ in conf // {
     , "control"
     , "effect"
     , "either"
+    , "enums"
     , "foldable-traversable"
     , "free"
     , "functions"

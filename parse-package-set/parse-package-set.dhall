@@ -12,6 +12,7 @@ in conf // {
     , "datetime"
     , "effect"
     , "either"
+    , "enums"
     , "exceptions"
     , "filterable"
     , "foldable-traversable"
