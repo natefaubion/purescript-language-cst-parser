@@ -232,3 +232,23 @@ main = do
         true
       _ ->
         false
+
+  assertParse "String with Unicode astral code point hex literal"
+    """
+    "\x10ffff"
+    """
+    case _ of
+      ParseSucceeded (ExprString _ _) ->
+        true
+      _ ->
+        false
+
+  assertParse "Unicode astral code point Char hex literal"
+    """
+    '\x10ffff'
+    """
+    case _ of
+      (ParseFailed _ :: RecoveredParserResult Expr) ->
+        true
+      _ ->
+        false
