@@ -14,7 +14,7 @@ jobs:
 
       - uses: purescript-contrib/setup-purescript@main
         with:
-          purescript: "0.15.0"
+          purescript: "0.15.8"
           spago: "0.20.9"
           psa: "0.8.2"
           purs-tidy: "latest"
