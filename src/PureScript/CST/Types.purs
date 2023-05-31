@@ -176,7 +176,7 @@ data Type e
   | TypeInt (Maybe SourceToken) SourceToken IntValue
   | TypeRow (Wrapped (Row e))
   | TypeRecord (Wrapped (Row e))
-  | TypeForall SourceToken (NonEmptyArray (TypeVarBindingWithVisibility e)) SourceToken (Type e)
+  | TypeForall SourceToken (NonEmptyArray (TypeVarBinding (Prefixed (Name Ident)) e)) SourceToken (Type e)
   | TypeKinded (Type e) SourceToken (Type e)
   | TypeApp (Type e) (NonEmptyArray (Type e))
   | TypeOp (Type e) (NonEmptyArray (Tuple (QualifiedName Operator) (Type e)))
@@ -186,8 +186,6 @@ data Type e
   | TypeConstrained (Type e) SourceToken (Type e)
   | TypeParens (Wrapped (Type e))
   | TypeError e
-
-type TypeVarBindingWithVisibility = TypeVarBinding (Prefixed (Name Ident))
 
 data TypeVarBinding a e
   = TypeVarKinded (Wrapped (Labeled a (Type e)))
