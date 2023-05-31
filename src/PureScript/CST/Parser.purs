@@ -612,7 +612,7 @@ parseExpr5 = defer \_ ->
 
 parseExprAppSpine :: Parser (Recovered (AppSpine Expr))
 parseExprAppSpine = defer \_ ->
-  AppVisibleType <$> tokAt <*> parseTypeAtom
+  AppType <$> tokAt <*> parseTypeAtom
     <|> AppTerm <$> parseExpr5
 
 parseIf :: Parser (Recovered Expr)

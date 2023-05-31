@@ -351,7 +351,7 @@ traverseExprAppSpine
   => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
   -> Rewrite e f (AppSpine Expr)
 traverseExprAppSpine k = case _ of
-  AppVisibleType tok ty -> AppVisibleType tok <$> traverseType k ty
+  AppType tok ty -> AppType tok <$> traverseType k ty
   AppTerm expr -> AppTerm <$> traverseExpr k expr
 
 traverseDelimited

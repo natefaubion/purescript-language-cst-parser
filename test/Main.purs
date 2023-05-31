@@ -259,9 +259,9 @@ main = do
     """
     case _ of
       (ParseSucceeded (ExprApp _ apps))
-        | [ AppVisibleType _ _
+        | [ AppType _ _
           , AppTerm _
-          , AppVisibleType _ _
+          , AppType _ _
           , AppTerm _
           ] <- NonEmptyArray.toArray apps ->
             true

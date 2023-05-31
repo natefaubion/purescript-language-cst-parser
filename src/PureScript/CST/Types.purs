@@ -395,7 +395,7 @@ data Expr e
   | ExprError e
 
 data AppSpine f e
-  = AppVisibleType SourceToken (Type e)
+  = AppType SourceToken (Type e)
   | AppTerm (f e)
 
 data RecordLabeled a

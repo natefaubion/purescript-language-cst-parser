@@ -845,7 +845,7 @@ instance tokensOfExpr :: TokensOf e => TokensOf (Expr e) where
 
 instance rangeOfAppSpine :: (RangeOf e, RangeOf (f e)) => RangeOf (AppSpine f e) where
   rangeOf = case _ of
-    AppVisibleType t a ->
+    AppType t a ->
       { start: t.range.start
       , end: (rangeOf a).end
       }
@@ -854,7 +854,7 @@ instance rangeOfAppSpine :: (RangeOf e, RangeOf (f e)) => RangeOf (AppSpine f e)
 
 instance tokensOfAppSpine :: (TokensOf e, TokensOf (f e)) => TokensOf (AppSpine f e) where
   tokensOf = case _ of
-    AppVisibleType t a ->
+    AppType t a ->
       cons t $ defer \_ -> tokensOf a
     AppTerm a ->
       tokensOf a
