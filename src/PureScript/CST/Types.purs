@@ -153,6 +153,13 @@ newtype Labeled a b = Labeled
 
 derive instance newtypeLabeled :: Newtype (Labeled a b) _
 
+newtype Prefixed a = Prefixed
+  { prefix :: Maybe SourceToken
+  , value :: a
+  }
+
+derive instance newtypePrefixed :: Newtype (Prefixed a) _
+
 type Delimited a = Wrapped (Maybe (Separated a))
 type DelimitedNonEmpty a = Wrapped (Separated a)
 
@@ -169,7 +176,7 @@ data Type e
   | TypeInt (Maybe SourceToken) SourceToken IntValue
   | TypeRow (Wrapped (Row e))
   | TypeRecord (Wrapped (Row e))
-  | TypeForall SourceToken (NonEmptyArray (TypeVarBinding e)) SourceToken (Type e)
+  | TypeForall SourceToken (NonEmptyArray (TypeVarBindingWithVisibility e)) SourceToken (Type e)
   | TypeKinded (Type e) SourceToken (Type e)
   | TypeApp (Type e) (NonEmptyArray (Type e))
   | TypeOp (Type e) (NonEmptyArray (Tuple (QualifiedName Operator) (Type e)))
@@ -180,9 +187,11 @@ data Type e
   | TypeParens (Wrapped (Type e))
   | TypeError e
 
-data TypeVarBinding e
-  = TypeVarKinded (Wrapped (Labeled (Name Ident) (Type e)))
-  | TypeVarName (Name Ident)
+type TypeVarBindingWithVisibility = TypeVarBinding (Prefixed (Name Ident))
+
+data TypeVarBinding a e
+  = TypeVarKinded (Wrapped (Labeled a (Type e)))
+  | TypeVarName a
 
 newtype Row e = Row
   { labels :: Maybe (Separated (Labeled (Name Label) (Type e)))
@@ -275,7 +284,7 @@ data Import e
 type DataHead e =
   { keyword :: SourceToken
   , name :: Name Proper
-  , vars :: Array (TypeVarBinding e)
+  , vars :: Array (TypeVarBinding (Name Ident) e)
   }
 
 newtype DataCtor e = DataCtor
@@ -289,7 +298,7 @@ type ClassHead e =
   { keyword :: SourceToken
   , super :: Maybe (Tuple (OneOrDelimited (Type e)) SourceToken)
   , name :: Name Proper
-  , vars :: Array (TypeVarBinding e)
+  , vars :: Array (TypeVarBinding (Name Ident) e)
   , fundeps :: Maybe (Tuple SourceToken (Separated ClassFundep))
   }
 
@@ -376,7 +385,7 @@ data Expr e
   | ExprNegate SourceToken (Expr e)
   | ExprRecordAccessor (RecordAccessor e)
   | ExprRecordUpdate (Expr e) (DelimitedNonEmpty (RecordUpdate e))
-  | ExprApp (Expr e) (NonEmptyArray (Expr e))
+  | ExprApp (Expr e) (NonEmptyArray (AppSpine Expr e))
   | ExprLambda (Lambda e)
   | ExprIf (IfThenElse e)
   | ExprCase (CaseOf e)
@@ -384,6 +393,10 @@ data Expr e
   | ExprDo (DoBlock e)
   | ExprAdo (AdoBlock e)
   | ExprError e
+
+data AppSpine f e
+  = AppVisibleType SourceToken (Type e)
+  | AppTerm (f e)
 
 data RecordLabeled a
   = RecordPun (Name Ident)
