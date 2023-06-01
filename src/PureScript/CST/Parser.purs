@@ -29,7 +29,7 @@ import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, eof, lookAhead, many, optional, recover, take, try)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
 import PureScript.CST.TokenStream as TokenStream
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), IntValue(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (AppSpine(..), Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), IntValue(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Prefixed(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
 type Recovered :: (P.Type -> P.Type) -> P.Type
 type Recovered f = f RecoveredError
@@ -179,7 +179,7 @@ parseDeclData = do
 
 parseDeclData1 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclData1 keyword name = do
-  vars <- many parseTypeVarBinding
+  vars <- many parseTypeVarBindingPlain
   ctors <- optional (Tuple <$> tokEquals <*> separated tokPipe parseDataCtor)
   pure $ DeclData { keyword, name, vars } ctors
 
@@ -198,7 +198,7 @@ parseDeclNewtype = do
 
 parseDeclNewtype1 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclNewtype1 keyword name = do
-  vars <- many parseTypeVarBinding
+  vars <- many parseTypeVarBindingPlain
   tok <- tokEquals
   wrapper <- parseProper
   body <- parseTypeAtom
@@ -218,7 +218,7 @@ parseDeclType1 keyword = do
 
 parseDeclType2 :: SourceToken -> Name Proper -> Parser (Recovered Declaration)
 parseDeclType2 keyword name = do
-  vars <- many parseTypeVarBinding
+  vars <- many parseTypeVarBindingPlain
   tok <- tokEquals
   body <- parseType
   pure $ DeclType { keyword, name, vars } tok body
@@ -252,7 +252,7 @@ parseDeclClass1 :: SourceToken -> Parser (Recovered Declaration)
 parseDeclClass1 keyword = do
   super <- optional $ try $ Tuple <$> parseClassConstraints parseType5 <*> tokLeftFatArrow
   name <- parseProper
-  vars <- many parseTypeVarBinding
+  vars <- many parseTypeVarBindingPlain
   fundeps <- optional $ Tuple <$> tokPipe <*> separated tokComma parseFundep
   members <- optional $ Tuple <$> tokKeyword "where" <*> layoutNonEmpty parseClassMember
   pure $ DeclClass { keyword, super, name, vars, fundeps } members
@@ -525,18 +525,27 @@ parseForall :: Parser (Recovered Type)
 parseForall = defer \_ ->
   TypeForall
     <$> tokForall
-    <*> many1 parseTypeVarBinding
+    <*> many1 parseTypeVarBindingWithVisibility
     <*> tokDot
     <*> parseType1
 
-parseTypeVarBinding :: Parser (Recovered TypeVarBinding)
-parseTypeVarBinding = defer \_ ->
-  parseTypeVarKinded
-    <|> TypeVarName <$> parseIdent
+parseTypeVarBindingWithVisibility :: Parser (Recovered (TypeVarBinding (Prefixed (Name Ident))))
+parseTypeVarBindingWithVisibility = defer \_ -> parseTypeVarBinding ado
+  prefix <- optional tokAt
+  value <- parseIdent
+  in Prefixed { prefix, value }
 
-parseTypeVarKinded :: Parser (Recovered TypeVarBinding)
-parseTypeVarKinded = TypeVarKinded <$> parens do
-  label <- parseIdent
+parseTypeVarBindingPlain :: Parser (Recovered (TypeVarBinding (Name Ident)))
+parseTypeVarBindingPlain = parseTypeVarBinding parseIdent
+
+parseTypeVarBinding :: forall a. Parser a -> Parser (Recovered (TypeVarBinding a))
+parseTypeVarBinding parseBindingName =
+  parseTypeVarKinded parseBindingName
+    <|> TypeVarName <$> parseBindingName
+
+parseTypeVarKinded :: forall a. Parser a -> Parser (Recovered (TypeVarBinding a))
+parseTypeVarKinded parseBindingName = TypeVarKinded <$> parens do
+  label <- parseBindingName
   separator <- tokDoubleColon
   value <- parseType
   pure $ Labeled { label, separator, value }
@@ -586,7 +595,7 @@ parseExpr3 = defer \_ -> do
 parseExpr4 :: Parser (Recovered Expr)
 parseExpr4 = defer \_ -> do
   expr <- parseExpr5
-  args <- many parseExpr5
+  args <- many parseExprAppSpine
   pure case NonEmptyArray.fromArray args of
     Nothing -> expr
     Just as -> ExprApp expr as
@@ -600,6 +609,11 @@ parseExpr5 = defer \_ ->
     <|> parseDo
     <|> parseAdo
     <|> parseExpr6
+
+parseExprAppSpine :: Parser (Recovered (AppSpine Expr))
+parseExprAppSpine = defer \_ ->
+  AppType <$> tokAt <*> parseTypeAtom
+    <|> AppTerm <$> parseExpr5
 
 parseIf :: Parser (Recovered Expr)
 parseIf = do

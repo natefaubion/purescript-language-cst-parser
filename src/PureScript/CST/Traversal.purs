@@ -59,6 +59,7 @@ module PureScript.CST.Traversal
   , traverseRow
   , traverseTypeVarBinding
   , traverseExpr
+  , traverseExprAppSpine
   , traverseDelimited
   , traverseDelimitedNonEmpty
   , traverseSeparated
@@ -98,6 +99,7 @@ module PureScript.CST.Traversal
   ) where
 
 import Prelude
+import Prim hiding (Row, Type)
 
 import Control.Monad.Free (Free, runFree)
 import Control.Monad.Reader.Trans (ReaderT(..), runReaderT)
@@ -109,8 +111,7 @@ import Data.Newtype (un)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..), curry, uncurry)
 import Prim as P
-import Prim hiding (Row, Type)
-import PureScript.CST.Types (AdoBlock, Binder(..), CaseOf, ClassHead, DataCtor(..), DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr(..), IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard(..), RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where(..), Wrapped(..))
+import PureScript.CST.Types (AdoBlock, AppSpine(..), Binder(..), CaseOf, ClassHead, DataCtor(..), DataHead, Declaration(..), Delimited, DelimitedNonEmpty, DoBlock, DoStatement(..), Expr(..), Foreign(..), Guarded(..), GuardedExpr(..), IfThenElse, Instance(..), InstanceBinding(..), InstanceHead, Labeled(..), Lambda, LetBinding(..), LetIn, Module(..), ModuleBody(..), OneOrDelimited(..), PatternGuard(..), RecordAccessor, RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), Type(..), TypeVarBinding(..), ValueBindingFields, Where(..), Wrapped(..))
 import Type.Row (type (+))
 
 type Rewrite e f (g :: P.Type -> P.Type) = g e -> f (g e)
@@ -312,10 +313,10 @@ traverseRow k (Row r) =
     <*> traverse (traverse k.onType) r.tail
 
 traverseTypeVarBinding
-  :: forall e f r
+  :: forall e f r a
    . Applicative f
   => { | OnType (Rewrite e f) + r }
-  -> Rewrite e f TypeVarBinding
+  -> Rewrite e f (TypeVarBinding a)
 traverseTypeVarBinding k = case _ of
   TypeVarKinded labeled -> TypeVarKinded <$> traverseWrapped (traverseLabeled k.onType) labeled
   TypeVarName name -> pure (TypeVarName name)
@@ -335,7 +336,7 @@ traverseExpr k = case _ of
   ExprNegate tok expr -> ExprNegate tok <$> k.onExpr expr
   ExprRecordAccessor recordAccessor -> ExprRecordAccessor <$> traverseRecordAccessor k recordAccessor
   ExprRecordUpdate expr recordUpdates -> ExprRecordUpdate <$> k.onExpr expr <*> traverseWrapped (traverseSeparated (traverseRecordUpdate k)) recordUpdates
-  ExprApp expr args -> ExprApp <$> k.onExpr expr <*> traverse k.onExpr args
+  ExprApp expr args -> ExprApp <$> k.onExpr expr <*> traverse (traverseExprAppSpine k) args
   ExprLambda lambda -> ExprLambda <$> traverseLambda k lambda
   ExprIf ifThenElse -> ExprIf <$> traverseIfThenElse k ifThenElse
   ExprCase caseOf -> ExprCase <$> traverseCaseOf k caseOf
@@ -343,6 +344,15 @@ traverseExpr k = case _ of
   ExprDo doBlock -> ExprDo <$> traverseDoBlock k doBlock
   ExprAdo adoBlock -> ExprAdo <$> traverseAdoBlock k adoBlock
   expr -> pure expr
+
+traverseExprAppSpine
+  :: forall e f r
+   . Applicative f
+  => { | OnBinder (Rewrite e f) + OnExpr (Rewrite e f) + OnType (Rewrite e f) + r }
+  -> Rewrite e f (AppSpine Expr)
+traverseExprAppSpine k = case _ of
+  AppType tok ty -> AppType tok <$> traverseType k ty
+  AppTerm expr -> AppTerm <$> traverseExpr k expr
 
 traverseDelimited
   :: forall f a

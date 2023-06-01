@@ -13,7 +13,7 @@ import Effect (Effect)
 import Effect.Class.Console as Console
 import Node.Process as Process
 import PureScript.CST (RecoveredParserResult(..), parseBinder, parseDecl, parseExpr, parseModule, parseType)
-import PureScript.CST.Types (Binder, Declaration(..), DoStatement(..), Expr(..), Label(..), LetBinding(..), Module(..), ModuleBody(..), Name(..), RecordLabeled(..), Separated(..), Token(..), Type, Wrapped(..))
+import PureScript.CST.Types (AppSpine(..), Binder, Declaration(..), DoStatement(..), Expr(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), Name(..), Prefixed(..), RecordLabeled(..), Separated(..), Token(..), Type(..), TypeVarBinding(..), Wrapped(..))
 
 class ParseFor f where
   parseFor :: String -> RecoveredParserResult f
@@ -249,6 +249,45 @@ main = do
     """
     case _ of
       (ParseFailed _ :: RecoveredParserResult Expr) ->
+        true
+      _ ->
+        false
+
+  assertParse "Type applications"
+    """
+    foo @Bar bar @(Baz 42) 42
+    """
+    case _ of
+      (ParseSucceeded (ExprApp _ apps))
+        | [ AppType _ _
+          , AppTerm _
+          , AppType _ _
+          , AppTerm _
+          ] <- NonEmptyArray.toArray apps ->
+            true
+      _ ->
+        false
+
+  assertParse "Forall visibility"
+    """
+    forall @a (@b :: Type) c. a -> c
+    """
+    case _ of
+      ParseSucceeded (TypeForall _ binders _ _)
+        | [ TypeVarName (Prefixed { prefix: Just _ })
+          , TypeVarKinded (Wrapped { value: Labeled { label: Prefixed { prefix: Just _ } } })
+          , TypeVarName (Prefixed { prefix: Nothing })
+          ] <- NonEmptyArray.toArray binders ->
+            true
+      _ ->
+        false
+
+  assertParse "Kind applications not supported"
+    """
+    Foo @Bar
+    """
+    case _ of
+      ParseSucceeded (TypeConstructor _) ->
         true
       _ ->
         false

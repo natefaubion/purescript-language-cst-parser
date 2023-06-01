@@ -6,6 +6,7 @@ module PureScript.CST.Range
   ) where
 
 import Prelude
+import Prim hiding (Row, Type)
 
 import Control.Lazy (defer)
 import Data.Array as Array
@@ -14,11 +15,10 @@ import Data.Array.NonEmpty as NonEmptyArray
 import Data.Foldable (foldMap)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple(..), fst, snd)
-import Prim hiding (Row, Type)
 import PureScript.CST.Errors (RecoveredError(..))
 import PureScript.CST.Range.TokenList (TokenList, cons, singleton)
 import PureScript.CST.Range.TokenList as TokenList
-import PureScript.CST.Types (Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), DoStatement(..), Export(..), Expr(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), Name(..), OneOrDelimited(..), PatternGuard(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), SourceRange, Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
+import PureScript.CST.Types (AppSpine(..), Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), DoStatement(..), Export(..), Expr(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), Name(..), OneOrDelimited(..), PatternGuard(..), Prefixed(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Row(..), Separated(..), SourceRange, Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
 class RangeOf a where
   rangeOf :: a -> SourceRange
@@ -120,6 +120,24 @@ instance rangeOfLabeled :: (RangeOf a, RangeOf b) => RangeOf (Labeled a b) where
 instance tokensOfLabeled :: (TokensOf a, TokensOf b) => TokensOf (Labeled a b) where
   tokensOf (Labeled { label, separator, value }) =
     tokensOf label <> singleton separator <> tokensOf value
+
+instance rangeOfPrefixed :: RangeOf a => RangeOf (Prefixed a) where
+  rangeOf (Prefixed { prefix, value }) =
+    case prefix of
+      Just tok ->
+        { start: tok.range.start
+        , end: (rangeOf value).end
+        }
+      Nothing ->
+        rangeOf value
+
+instance tokensOfPrefixed :: TokensOf a => TokensOf (Prefixed a) where
+  tokensOf (Prefixed { prefix, value }) =
+    case prefix of
+      Just tok ->
+        cons tok $ defer \_ -> tokensOf value
+      Nothing ->
+        tokensOf value
 
 instance rangeOfOneOrDelimited :: RangeOf a => RangeOf (OneOrDelimited a) where
   rangeOf = case _ of
@@ -240,14 +258,14 @@ instance tokensOfRow :: TokensOf e => TokensOf (Row e) where
     foldMap tokensOf labels
       <> foldMap (\(Tuple t ty) -> cons t $ tokensOf ty) tail
 
-instance rangeOfTypeVarBinding :: RangeOf (TypeVarBinding e) where
+instance rangeOfTypeVarBinding :: RangeOf a => RangeOf (TypeVarBinding a e) where
   rangeOf = case _ of
     TypeVarKinded w ->
       rangeOf w
     TypeVarName n ->
       rangeOf n
 
-instance tokensOfTypeVarBinding :: TokensOf e => TokensOf (TypeVarBinding e) where
+instance tokensOfTypeVarBinding :: (TokensOf a, TokensOf e) => TokensOf (TypeVarBinding a e) where
   tokensOf = case _ of
     TypeVarKinded w ->
       tokensOf w
@@ -824,6 +842,22 @@ instance tokensOfExpr :: TokensOf e => TokensOf (Expr e) where
           <> tokensOf block.result
     ExprError e ->
       tokensOf e
+
+instance rangeOfAppSpine :: (RangeOf e, RangeOf (f e)) => RangeOf (AppSpine f e) where
+  rangeOf = case _ of
+    AppType t a ->
+      { start: t.range.start
+      , end: (rangeOf a).end
+      }
+    AppTerm a ->
+      rangeOf a
+
+instance tokensOfAppSpine :: (TokensOf e, TokensOf (f e)) => TokensOf (AppSpine f e) where
+  tokensOf = case _ of
+    AppType t a ->
+      cons t $ defer \_ -> tokensOf a
+    AppTerm a ->
+      tokensOf a
 
 instance tokensOfRecordUpdate :: TokensOf e => TokensOf (RecordUpdate e) where
   tokensOf = case _ of
