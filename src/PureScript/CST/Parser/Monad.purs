@@ -1,5 +1,5 @@
 module PureScript.CST.Parser.Monad
-  ( Parser
+  ( Parser(..)
   , ParserState
   , ParserResult(..)
   , PositionedError
