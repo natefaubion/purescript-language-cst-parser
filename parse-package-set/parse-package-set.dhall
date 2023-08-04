@@ -28,7 +28,6 @@ in conf // {
     , "node-buffer"
     , "node-child-process"
     , "node-fs"
-    , "node-fs-aff"
     , "node-path"
     , "numbers"
     , "numbers"

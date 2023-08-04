@@ -23,7 +23,7 @@ in conf // {
     , "minibench"
     , "newtype"
     , "node-buffer"
-    , "node-fs-aff"
+    , "node-fs"
     , "node-process"
     , "numbers"
     , "numbers"
