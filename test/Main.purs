@@ -13,7 +13,7 @@ import Effect (Effect)
 import Effect.Class.Console as Console
 import Node.Process as Process
 import PureScript.CST (RecoveredParserResult(..), parseBinder, parseDecl, parseExpr, parseModule, parseType)
-import PureScript.CST.Types (AppSpine(..), Binder, Declaration(..), DoStatement(..), Expr(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), Name(..), Prefixed(..), RecordLabeled(..), Separated(..), Token(..), Type(..), TypeVarBinding(..), Wrapped(..))
+import PureScript.CST.Types (AppSpine(..), Binder, Comment(..), Declaration(..), DoStatement(..), Expr(..), Label(..), Labeled(..), LetBinding(..), LineFeed(..), Module(..), ModuleBody(..), ModuleHeader(..), Name(..), Prefixed(..), RecordLabeled(..), Separated(..), Token(..), Type(..), TypeVarBinding(..), Wrapped(..))
 
 class ParseFor f where
   parseFor :: String -> RecoveredParserResult f
@@ -288,6 +288,85 @@ main = do
     """
     case _ of
       ParseSucceeded (TypeConstructor _) ->
+        true
+      _ ->
+        false
+
+  assertParse "No module shebang"
+    """
+    -- no shebang
+    module Test where
+    """
+    case _ of
+      ParseSucceeded (Module { header: ModuleHeader { keyword } })
+        | [ Comment "-- no shebang"
+          , Line LF 1
+          ] <- keyword.leadingComments ->
+            true
+      _ ->
+        false
+
+  assertParse "Module shebang"
+    """
+    #! shebang
+    module Test where
+    """
+    case _ of
+      ParseSucceeded (Module { header: ModuleHeader { keyword } })
+        | [ Comment "#! shebang"
+          , Line LF 1
+          ] <- keyword.leadingComments ->
+            true
+      _ ->
+        false
+
+  assertParse "Multiple module shebangs"
+    """
+    #! shebang 1
+    #! shebang 2
+    #! shebang 3
+    -- no shebang
+    module Test where
+    """
+    case _ of
+      ParseSucceeded (Module { header: ModuleHeader { keyword } })
+        | [ Comment "#! shebang 1"
+          , Line LF 1
+          , Comment "#! shebang 2"
+          , Line LF 1
+          , Comment "#! shebang 3"
+          , Line LF 1
+          , Comment "-- no shebang"
+          , Line LF 1
+          ] <- keyword.leadingComments ->
+            true
+      _ ->
+        false
+
+  assertParse "Multiple lines between shebangs should fail"
+    """
+    #! shebang 1
+
+    #! shebang 2
+    #! shebang 3
+    module Test where
+    """
+    case _ of
+      (ParseFailed _ :: RecoveredParserResult Module) ->
+        true
+      _ ->
+        false
+
+  assertParse "Comments between shebangs should fail"
+    """
+    #! shebang 1
+    -- no shebang
+    #! shebang 2
+    #! shebang 3
+    module Test where
+    """
+    case _ of
+      (ParseFailed _ :: RecoveredParserResult Module) ->
         true
       _ ->
         false
