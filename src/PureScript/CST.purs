@@ -23,13 +23,14 @@ import Data.Lazy as Z
 import Data.Maybe (Maybe(..))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
-import PureScript.CST.Lexer (lex)
+import PureScript.CST.Lexer (lex, lexModule)
 import PureScript.CST.Parser (Recovered, parseModuleBody, parseModuleHeader)
 import PureScript.CST.Parser as Parser
 import PureScript.CST.Parser.Monad (Parser, ParserResult(..), PositionedError, fromParserResult, initialParserState, runParser, runParser')
 import PureScript.CST.Print as Print
 import PureScript.CST.Range (class TokensOf, tokensOf)
 import PureScript.CST.Range.TokenList as TokenList
+import PureScript.CST.TokenStream (TokenStream)
 import PureScript.CST.Types (Binder, Declaration, Expr, ImportDecl, Module(..), ModuleHeader, Type)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -54,26 +55,26 @@ toRecoveredParserResult = case _ of
 toRecovered :: forall f. f Void -> Recovered f
 toRecovered = unsafeCoerce
 
-runRecoveredParser :: forall a. Parser (Recovered a) -> String -> RecoveredParserResult a
-runRecoveredParser p = toRecoveredParserResult <<< flip runParser p <<< lex
+runRecoveredParser :: forall a. Parser (Recovered a) -> TokenStream -> RecoveredParserResult a
+runRecoveredParser p = toRecoveredParserResult <<< flip runParser p
 
 parseModule :: String -> RecoveredParserResult Module
-parseModule = runRecoveredParser Parser.parseModule
+parseModule = runRecoveredParser Parser.parseModule <<< lexModule
 
 parseImportDecl :: String -> RecoveredParserResult ImportDecl
-parseImportDecl = runRecoveredParser Parser.parseImportDecl
+parseImportDecl = runRecoveredParser Parser.parseImportDecl <<< lex
 
 parseDecl :: String -> RecoveredParserResult Declaration
-parseDecl = runRecoveredParser Parser.parseDecl
+parseDecl = runRecoveredParser Parser.parseDecl <<< lex
 
 parseExpr :: String -> RecoveredParserResult Expr
-parseExpr = runRecoveredParser Parser.parseExpr
+parseExpr = runRecoveredParser Parser.parseExpr <<< lex
 
 parseType :: String -> RecoveredParserResult Type
-parseType = runRecoveredParser Parser.parseType
+parseType = runRecoveredParser Parser.parseType <<< lex
 
 parseBinder :: String -> RecoveredParserResult Binder
-parseBinder = runRecoveredParser Parser.parseBinder
+parseBinder = runRecoveredParser Parser.parseBinder <<< lex
 
 newtype PartialModule e = PartialModule
   { header :: ModuleHeader e
@@ -82,7 +83,7 @@ newtype PartialModule e = PartialModule
 
 parsePartialModule :: String -> RecoveredParserResult PartialModule
 parsePartialModule src =
-  toRecoveredParserResult $ case runParser' (initialParserState (lex src)) parseModuleHeader of
+  toRecoveredParserResult $ case runParser' (initialParserState (lexModule src)) parseModuleHeader of
     ParseSucc header state -> do
       let
         res = PartialModule

@@ -1,5 +1,6 @@
 module PureScript.CST.Lexer
   ( lex
+  , lexModule
   , lexWithState
   , lexToken
   ) where
@@ -9,6 +10,7 @@ import Prelude
 import Control.Alt (class Alt, alt)
 import Control.Monad.ST as ST
 import Control.Monad.ST.Ref as STRef
+import Data.Array as Array
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Array.ST as STArray
 import Data.Char as Char
@@ -193,15 +195,23 @@ many (Lex k) = Lex \str -> ST.run do
 fail :: forall a. ParseError -> Lex LexError a
 fail = Lex <<< LexFail <<< const
 
+-- | Lexes according to root layout rules and standard language comments.
 lex :: String -> TokenStream
 lex = lexWithState (Tuple { line: 0, column: 0 } LytRoot : Nil) { line: 0, column: 0 }
 
+-- | Lexes according to root layout rules as well as supporting leading shebang comments.
+lexModule :: String -> TokenStream
+lexModule = lexWithState' leadingModuleComments (Tuple { line: 0, column: 0 } LytRoot : Nil) { line: 0, column: 0 }
+
 lexWithState :: LayoutStack -> SourcePos -> String -> TokenStream
-lexWithState = init
+lexWithState = lexWithState' leadingComments
+
+lexWithState' :: Lex LexError (Array (Comment LineFeed)) -> LayoutStack -> SourcePos -> String -> TokenStream
+lexWithState' lexLeadingComments = init
   where
   init :: LayoutStack -> SourcePos -> String -> TokenStream
   init initStack initPos str = TokenStream $ Lazy.defer \_ -> do
-    let (Lex k) = leadingComments
+    let (Lex k) = lexLeadingComments
     case k str of
       LexFail _ _ ->
         unsafeCrashWith "Leading comments can't fail."
@@ -358,6 +368,15 @@ bumpComment pos@{ line, column } = case _ of
 qualLength :: Maybe ModuleName -> Int
 qualLength = maybe 0 (add 1 <<< String.length <<< unwrap)
 
+leadingModuleComments :: Lex LexError (Array (Comment LineFeed))
+leadingModuleComments = append <$> (leadingShebangs <|> pure []) <*> leadingComments
+
+leadingShebangs :: Lex LexError (Array (Comment LineFeed))
+leadingShebangs = ado
+  head <- shebangComment
+  tail <- many (try (Tuple <$> oneLineComment <*> shebangComment))
+  in Array.cons (Comment head) (foldMap (\(Tuple a b) -> [ a, Comment b ]) tail)
+
 leadingComments :: Lex LexError (Array (Comment LineFeed))
 leadingComments = many do
   Comment <$> comment
@@ -374,6 +393,9 @@ comment =
   regex (LexExpected "block comment") """\{-(-(?!\})|[^-]+)*(-\}|$)"""
     <|> regex (LexExpected "line comment") """--[^\r\n]*"""
 
+shebangComment :: Lex LexError String
+shebangComment = regex (LexExpected "shebang") """#![^\r\n]*"""
+
 spaceComment :: Lex LexError Int
 spaceComment = SCU.length <$> regex (LexExpected "spaces") " +"
 
@@ -381,6 +403,13 @@ lineComment :: Lex LexError (Comment LineFeed)
 lineComment =
   (Line LF <<< String.length) <$> regex (LexExpected "newline") "\n+"
     <|> (Line CRLF <<< (_ / 2) <<< String.length) <$> regex (LexExpected "newline") "(?:\r\n)+"
+
+oneLineComment :: Lex LexError (Comment LineFeed)
+oneLineComment = do
+  line <- lineComment
+  case line of
+    Line _ 1 -> pure line
+    _ -> fail $ LexExpected "one newline" "multiple newlines"
 
 token :: Lex LexError Token
 token =
