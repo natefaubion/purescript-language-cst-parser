@@ -2,44 +2,26 @@ package:
   name: parse-package-set
   dependencies:
     - aff
+    - argonaut-codecs
+    - argonaut-core
     - arrays
     - avar
     - console
-    - const
-    - control
     - datetime
     - effect
     - either
-    - enums
     - exceptions
     - filterable
     - foldable-traversable
-    - free
-    - functions
-    - functors
-    - identity
-    - integers
-    - lazy
-    - lists
+    - foreign-object
+    - language-cst-parser
     - maybe
     - newtype
     - node-buffer
     - node-child-process
     - node-fs
     - node-path
-    - argonaut-codecs
-    - argonaut-core
     - numbers
-    - numbers
-    - ordered-collections
     - parallel
-    - partial
     - prelude
-    - st
     - strings
-    - transformers
-    - tuples
-    - typelevel-prelude
-    - unfoldable
-    - unsafe-coerce
-    - language-cst-parser

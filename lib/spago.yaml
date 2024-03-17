@@ -2,10 +2,8 @@ package:
   name: language-cst-parser
   dependencies:
     - arrays
-    - console
     - const
     - control
-    - effect
     - either
     - enums
     - foldable-traversable
@@ -18,7 +16,6 @@ package:
     - lists
     - maybe
     - newtype
-    - node-process
     - numbers
     - ordered-collections
     - partial
@@ -30,3 +27,9 @@ package:
     - typelevel-prelude
     - unfoldable
     - unsafe-coerce
+  test:
+    main: Test.Main
+    dependencies:
+      - console
+      - effect
+      - node-process

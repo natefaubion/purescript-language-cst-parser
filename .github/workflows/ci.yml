@@ -31,7 +31,7 @@ jobs:
         run: spago build --purs-args '--censor-lib --strict'
 
       - name: Run tests
-        run: spago test
+        run: spago test --pedantic-packages
 
       - name: Check formatting
         run: npm run check
