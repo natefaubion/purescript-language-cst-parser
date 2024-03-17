@@ -12,11 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: purescript-contrib/setup-purescript@main
+      # - uses: purescript-contrib/setup-purescript@main
+      - uses: srghma/setup-purescript@main
         with:
-          purescript: "0.15.8"
-          spago: "0.20.9"
-          psa: "0.8.2"
+          purescript: "latest"
+          spago: "latest"
+          psa: "latest"
           purs-tidy: "latest"
 
       - name: Cache PureScript dependencies
