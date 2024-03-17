@@ -58,7 +58,7 @@ main = runAff_ (either throwException mempty) do
 
   writeTextFile UTF8 (tmpPath <> "/spago.yaml") defaultSpagoYaml
 
-  let execOptsFn execSyncOptions = execSyncOptions { cwd = Just tmpPath }
+  let execOptsFn = _ { cwd = Just tmpPath }
   s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" execOptsFn
   let (objectOrError :: Either JsonDecodeError (Object Json)) = Data.Argonaut.Decode.decodeJson =<< Data.Argonaut.Decode.parseJson s
   (object :: Object Json) <- either (throwError <<< error <<< Data.Argonaut.Decode.printJsonDecodeError) pure objectOrError
