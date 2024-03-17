@@ -1,0 +1,32 @@
+package:
+  name: language-cst-parser
+  dependencies:
+    - arrays
+    - console
+    - const
+    - control
+    - effect
+    - either
+    - enums
+    - foldable-traversable
+    - free
+    - functions
+    - functors
+    - identity
+    - integers
+    - lazy
+    - lists
+    - maybe
+    - newtype
+    - node-process
+    - numbers
+    - ordered-collections
+    - partial
+    - prelude
+    - st
+    - strings
+    - transformers
+    - tuples
+    - typelevel-prelude
+    - unfoldable
+    - unsafe-coerce
