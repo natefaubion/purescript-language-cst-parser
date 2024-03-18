@@ -60,9 +60,9 @@ main = runAff_ (either throwException mempty) do
 
   let execOptsFn = _ { cwd = Just tmpPath }
   s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" execOptsFn
-  let (objectOrError :: Either JsonDecodeError (Object Json)) = Data.Argonaut.Decode.decodeJson =<< Data.Argonaut.Decode.parseJson s
-  (object :: Object Json) <- either (throwError <<< error <<< Data.Argonaut.Decode.printJsonDecodeError) pure objectOrError
-  let (packages :: Array String) = Foreign.Object.keys object
+packages <- case decodeJson =<< parseJson s of
+  Left err -> throwError $ error $ printJsonDecodeError err
+  Right obj -> pure $ Object.keys obj
   _ <- liftEffect $ Exec.execSync' ("spago install " <> Str.joinWith " " packages) execOptsFn
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
