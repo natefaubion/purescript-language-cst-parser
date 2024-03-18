@@ -57,12 +57,11 @@ main = runAff_ (either throwException mempty) do
 
   writeTextFile UTF8 (tmpPath <> "/spago.yaml") defaultSpagoYaml
 
-  let execOptsFn = _ { cwd = Just tmpPath }
-  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" execOptsFn
+  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" (_ { cwd = Just tmpPath })
   packages <- case decodeJson =<< parseJson s of
     Left err -> throwError $ error $ printJsonDecodeError err
     Right (object :: Object Json) -> pure $ Object.keys object
-  _ <- liftEffect $ Exec.execSync' ("spago install " <> Str.joinWith " " packages) execOptsFn
+  _ <- liftEffect $ Exec.execSync' ("spago install " <> Str.joinWith " " packages) (_ { cwd = Just tmpPath })
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
 
