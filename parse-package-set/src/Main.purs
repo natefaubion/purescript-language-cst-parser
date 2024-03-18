@@ -39,10 +39,9 @@ import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module(..), ModuleHeader)
 import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 import Data.Argonaut.Core (Json)
-import Data.Argonaut.Decode as Data.Argonaut.Decode
-import Data.Argonaut.Decode (JsonDecodeError)
+import Data.Argonaut.Decode (parseJson, decodeJson, printJsonDecodeError)
 import Foreign.Object (Object)
-import Foreign.Object as Foreign.Object
+import Foreign.Object as Object
 
 foreign import tmpdir :: String -> Effect String
 
@@ -60,9 +59,9 @@ main = runAff_ (either throwException mempty) do
 
   let execOptsFn = _ { cwd = Just tmpPath }
   s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" execOptsFn
-packages <- case decodeJson =<< parseJson s of
-  Left err -> throwError $ error $ printJsonDecodeError err
-  Right obj -> pure $ Object.keys obj
+  packages <- case decodeJson =<< parseJson s of
+    Left err -> throwError $ error $ printJsonDecodeError err
+    Right (object :: Object Json) -> pure $ Object.keys object
   _ <- liftEffect $ Exec.execSync' ("spago install " <> Str.joinWith " " packages) execOptsFn
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
