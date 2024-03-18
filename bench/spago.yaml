@@ -1,0 +1,16 @@
+package:
+  name: bench
+  dependencies:
+    - aff
+    - arrays
+    - console
+    - effect
+    - either
+    - foldable-traversable
+    - language-cst-parser
+    - maybe
+    - minibench
+    - node-buffer
+    - node-fs
+    - node-process
+    - prelude

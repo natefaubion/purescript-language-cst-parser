@@ -12,11 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - uses: purescript-contrib/setup-purescript@main
+      # - uses: purescript-contrib/setup-purescript@main
+      - uses: srghma/setup-purescript@main
         with:
-          purescript: "0.15.8"
-          spago: "0.20.9"
-          psa: "0.8.2"
+          purescript: "latest"
+          spago: "latest"
+          psa: "latest"
           purs-tidy: "latest"
 
       - name: Cache PureScript dependencies
@@ -31,7 +32,7 @@ jobs:
         run: spago build --purs-args '--censor-lib --strict'
 
       - name: Run tests
-        run: spago test
+        run: spago test --pedantic-packages
 
       - name: Check formatting
         run: npm run check

@@ -1,0 +1,27 @@
+package:
+  name: parse-package-set
+  dependencies:
+    - aff
+    - argonaut-codecs
+    - argonaut-core
+    - arrays
+    - avar
+    - console
+    - datetime
+    - effect
+    - either
+    - exceptions
+    - filterable
+    - foldable-traversable
+    - foreign-object
+    - language-cst-parser
+    - maybe
+    - newtype
+    - node-buffer
+    - node-child-process
+    - node-fs
+    - node-path
+    - numbers
+    - parallel
+    - prelude
+    - strings

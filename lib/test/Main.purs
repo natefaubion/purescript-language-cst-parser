@@ -44,7 +44,7 @@ assertParse name src k = do
   let res = parseFor (trim src)
   unless (k res) do
     Console.error $ "Assertion failed: " <> name
-    Process.exit 1
+    Process.exit' 1
   where
   trim =
     String.split (Pattern "\n")

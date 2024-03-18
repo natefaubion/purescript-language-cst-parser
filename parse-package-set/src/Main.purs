@@ -22,7 +22,7 @@ import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.AVar as EffectAVar
-import Effect.Aff (Aff, runAff_)
+import Effect.Aff (Aff, runAff_, throwError, error)
 import Effect.Aff.AVar as AVar
 import Effect.Class (liftEffect)
 import Effect.Console as Console
@@ -38,6 +38,10 @@ import PureScript.CST.Errors (printParseError)
 import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module(..), ModuleHeader)
 import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
+import Data.Argonaut.Core (Json)
+import Data.Argonaut.Decode (parseJson, decodeJson, printJsonDecodeError)
+import Foreign.Object (Object)
+import Foreign.Object as Object
 
 foreign import tmpdir :: String -> Effect String
 
@@ -49,13 +53,15 @@ main :: Effect Unit
 main = runAff_ (either throwException mempty) do
   tmpPath <- liftEffect $ tmpdir "cst-integration-"
 
-  writeTextFile UTF8 (tmpPath <> "/spago.dhall") defaultSpagoDhall
+  liftEffect $ Console.log $ "Making new project in " <> tmpPath
 
-  let execOpts = Exec.defaultExecSyncOptions { cwd = Just tmpPath }
-  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync "spago ls packages" execOpts
-  let lines = Str.split (Str.Pattern "\n") s
-  let packages = Str.joinWith " " (String.takeWhile (_ /= ' ') <$> lines)
-  _ <- liftEffect $ Exec.execSync ("spago install " <> packages) execOpts
+  writeTextFile UTF8 (tmpPath <> "/spago.yaml") defaultSpagoYaml
+
+  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" (_ { cwd = Just tmpPath })
+  packages <- case decodeJson =<< parseJson s of
+    Left err -> throwError $ error $ printJsonDecodeError err
+    Right (object :: Object Json) -> pure $ Object.keys object
+  _ <- liftEffect $ Exec.execSync' ("spago install " <> Str.joinWith " " packages) (_ { cwd = Just tmpPath })
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
 
@@ -154,13 +160,15 @@ main = runAff_ (either throwException mempty) do
       [ "Error: cycle detected in module graph"
       ]
 
-defaultSpagoDhall :: String
-defaultSpagoDhall = Array.intercalate "\n"
-  [ "{ name = \"test-parser\""
-  , ", dependencies = [] : List Text"
-  , ", packages = https://github.com/purescript/package-sets/releases/download/psc-0.15.7-20230401/packages.dhall sha256:d385eeee6ca160c32d7389a1f4f4ee6a05aff95e81373cdc50670b436efa1060"
-  , ", sources = [] : List Text"
-  , "}"
+defaultSpagoYaml :: String
+defaultSpagoYaml = Array.intercalate "\n"
+  [ "package:"
+  , "  name: test-parser"
+  , "  dependencies: []"
+  , "workspace:"
+  , "  package_set:"
+  , "    registry: 50.4.0"
+  , "  extra_packages: {}"
   ]
 
 getPursFiles :: Int -> FilePath -> Aff (Array FilePath)
