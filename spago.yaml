@@ -1,7 +1,14 @@
 package:
   name: language-cst-parser
+  description: A parser for the PureScript concrete syntax tree.
   build:
     strict: true
+  publish:
+    version: 0.14.1
+    license: MIT
+    location:
+      githubOwner: natefaubion
+      githubRepo: purescript-language-cst-parser
   dependencies:
     - arrays: ">=7.3.0 <8.0.0"
     - const: ">=6.0.0 <7.0.0"
