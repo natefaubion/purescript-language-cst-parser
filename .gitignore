@@ -10,5 +10,4 @@ generated-docs
 .psa*
 .spago
 
-package-lock.json
 *.lock
