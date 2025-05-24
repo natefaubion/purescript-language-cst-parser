@@ -1,3 +1,38 @@
+package:
+  name: language-cst-parser
+  dependencies:
+    - arrays
+    - const
+    - control
+    - either
+    - enums
+    - foldable-traversable
+    - free
+    - functions
+    - functors
+    - identity
+    - integers
+    - lazy
+    - lists
+    - maybe
+    - newtype
+    - numbers
+    - ordered-collections
+    - partial
+    - prelude
+    - st
+    - strings
+    - transformers
+    - tuples
+    - typelevel-prelude
+    - unfoldable
+    - unsafe-coerce
+  test:
+    main: Test.Main
+    dependencies:
+      - console
+      - effect
+      - node-process
 workspace:
   package_set:
     registry: 50.4.0
