@@ -35,9 +35,9 @@ import Node.FS.Stats as FS
 import Node.Path (FilePath)
 import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
+import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module(..), ModuleHeader)
-import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 
 foreign import tmpdir :: String -> Effect String
 
@@ -58,17 +58,7 @@ main = runAff_ (either throwException mempty) do
   _ <- liftEffect $ Exec.execSync ("spago install " <> packages) execOpts
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
-
-  block <- AVar.empty
-
-  for_ (Array.range 1 10) \_ -> do
-    liftEffect $ EffectAVar.put unit block mempty
-
-  moduleResults <- flip parTraverse pursFiles \file -> do
-    AVar.take block
-    result <- parseModuleFromFile file
-    _ <- liftEffect $ EffectAVar.put unit block mempty
-    pure result
+  moduleResults <- parseModulesFromFiles pursFiles
 
   let
     partition = moduleResults # partitionMap \{ path, errors, duration, printerMatches } ->
@@ -187,6 +177,19 @@ type ModuleResult =
   , printerMatches :: Maybe Boolean
   }
 
+parseModulesFromFiles :: Array FilePath -> Aff (Array ModuleResult)
+parseModulesFromFiles pursFiles = do
+  block <- AVar.empty
+
+  for_ (Array.range 1 10) \_ -> do
+    liftEffect $ EffectAVar.put unit block mempty
+
+  flip parTraverse pursFiles \file -> do
+    AVar.take block
+    result <- parseModuleFromFile file
+    _ <- liftEffect $ EffectAVar.put unit block mempty
+    pure result
+
 parseModuleFromFile :: FilePath -> Aff ModuleResult
 parseModuleFromFile path = do
   contents <- readTextFile UTF8 path
@@ -225,6 +228,7 @@ type DurationStats r =
   { minDuration :: Array { path :: FilePath, duration :: Milliseconds | r }
   , maxDuration :: Array { path :: FilePath, duration :: Milliseconds | r }
   , mean :: Milliseconds
+  , total :: Milliseconds
   }
 
 getDurationStats :: forall r. Array { path :: FilePath, duration :: Milliseconds | r } -> DurationStats r
@@ -232,19 +236,23 @@ getDurationStats res =
   { minDuration: Array.take 20 sorted
   , maxDuration: Array.reverse (Array.takeEnd 20 sorted)
   , mean
+  , total: Milliseconds sum.duration
   }
   where
   sorted =
     Array.sortBy (comparing _.duration) res
 
-  mean =
+  sum =
     sorted
       # foldMap (\{ duration: Milliseconds duration } -> Additive { duration, total: 1.0 })
       # un Additive
+
+  mean =
+    sum
       # \{ duration, total } -> Milliseconds (duration / total)
 
 displayDurationStats :: forall r. DurationStats r -> String -> String
-displayDurationStats { minDuration, maxDuration, mean } title =
+displayDurationStats { minDuration, maxDuration, mean, total } title =
   Array.intercalate "\n"
     [ ""
     , "---- [ " <> title <> " Timing Information ] ----"
@@ -254,6 +262,7 @@ displayDurationStats { minDuration, maxDuration, mean } title =
     , "Slowest Parse Times:"
     , Array.intercalate "\n" $ displayLine <$> maxDuration
     , ""
+    , "Total Parse: " <> formatMs total
     , "Mean Parse: " <> formatMs mean
     ]
 
