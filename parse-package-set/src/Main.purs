@@ -38,7 +38,6 @@ import PureScript.CST.Errors (printParseError)
 import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module(..), ModuleHeader)
-import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 import Data.Argonaut.Core (Json)
 import Data.Argonaut.Decode (parseJson, decodeJson, printJsonDecodeError)
 import Foreign.Object (Object)
@@ -52,7 +51,7 @@ foreign import hrtimeDiff :: { seconds :: Number, nanos :: Number } -> Effect { 
 
 main :: Effect Unit
 main = runAff_ (either throwException mempty) do
-  tmpPath <- liftEffect $ tmpdir "cst-integration-"
+  tmpPath <- liftEffect $ tmpdir "language-cst-parser-parse-package-set"
 
   liftEffect $ Console.log $ "Making new project in " <> tmpPath
 

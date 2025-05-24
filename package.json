@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "install": "spago install",
-    "build": "spago build --purs-args '--censor-lib --strict'",
+    "build": "spago build",
     "test": "spago test",
     "parse-package-set": "spago run --package parse-package-set",
     "bench-file": "spago build --package bench && node --expose-gc --input-type=\"module\" -e \"import { main } from './output/BenchFile/index.js';main()\"",
