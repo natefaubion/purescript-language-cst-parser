@@ -10,31 +10,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-
-      - uses: purescript-contrib/setup-purescript@main
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          purescript: "0.15.8"
-          spago: "0.20.9"
-          psa: "0.8.2"
-          purs-tidy: "latest"
+          node-version: 22
+          cache: 'npm'
 
       - name: Cache PureScript dependencies
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           key: ${{ runner.os }}-spago-${{ hashFiles('**/*.dhall') }}
           path: |
             .spago
             output
 
-      - name: Build source
-        run: spago build --purs-args '--censor-lib --strict'
+      - name: Install npm dependencies
+        run: npm install --include=dev
+
+      - name: Install dependencies
+        run: npm run install
+
+      - name: Build project
+        run: npm run build
 
       - name: Run tests
-        run: spago test
+        run: npm run test
 
       - name: Check formatting
-        run: npm run check
+        run: npm run format:check
 
       - name: Parse package sets
         run: npm run parse-package-set
