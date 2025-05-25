@@ -1,0 +1,29 @@
+package:
+  name: parse-package-set
+  build:
+    strict: true
+  dependencies:
+    - aff: ">=8.0.0 <9.0.0"
+    - argonaut-codecs: ">=9.1.0 <10.0.0"
+    - argonaut-core: ">=7.0.0 <8.0.0"
+    - arrays: ">=7.3.0 <8.0.0"
+    - avar: ">=5.0.1 <6.0.0"
+    - console: ">=6.1.0 <7.0.0"
+    - datetime: ">=6.1.0 <7.0.0"
+    - effect: ">=4.0.0 <5.0.0"
+    - either: ">=6.1.0 <7.0.0"
+    - exceptions: ">=6.1.0 <7.0.0"
+    - filterable: ">=5.0.0 <6.0.0"
+    - foldable-traversable: ">=6.0.0 <7.0.0"
+    - foreign-object: ">=4.1.0 <5.0.0"
+    - language-cst-parser: "*"
+    - maybe: ">=6.0.0 <7.0.0"
+    - newtype: ">=5.0.0 <6.0.0"
+    - node-buffer: ">=9.0.0 <10.0.0"
+    - node-child-process: ">=11.1.0 <12.0.0"
+    - node-fs: ">=9.2.0 <10.0.0"
+    - node-path: ">=5.0.1 <6.0.0"
+    - numbers: ">=9.0.1 <10.0.0"
+    - parallel: ">=7.0.0 <8.0.0"
+    - prelude: ">=6.0.2 <7.0.0"
+    - strings: ">=6.0.1 <7.0.0"

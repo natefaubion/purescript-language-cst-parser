@@ -20,3 +20,4 @@ By adding your name to the list below, you agree to license your contributions u
 | [@i-am-the-slime](https://github.com/i-am-the-slime) | Mark Eibes
 | [@monoidmusician](https://github.com/MonoidMusician) | Verity Scheel
 | [@turlando](https://github.com/turlando) | Tancredi Orlando
+| [@srghma](https://github.com/srghma) | Serhii Khoma

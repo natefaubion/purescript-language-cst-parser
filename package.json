@@ -2,11 +2,11 @@
   "private": true,
   "scripts": {
     "install": "spago install",
-    "build": "spago build --purs-args '--censor-lib --strict'",
+    "build": "spago build",
     "test": "spago test",
-    "parse-package-set": "spago -x parse-package-set/parse-package-set.dhall run",
-    "bench-file": "spago -x bench/bench.dhall build && node --expose-gc --input-type=\"module\" -e \"import { main } from './output/BenchFile/index.js';main()\"",
-    "parse-file": "spago -x bench/bench.dhall build && node --input-type=\"module\" -e \"import { main } from './output/ParseFile/index.js';main()\" --",
+    "parse-package-set": "spago run --package parse-package-set",
+    "bench-file": "spago build --package bench && node --expose-gc --input-type=\"module\" -e \"import { main } from './output/BenchFile/index.js';main()\"",
+    "parse-file": "spago build --package bench && node --input-type=\"module\" -e \"import { main } from './output/ParseFile/index.js';main()\"",
     "format": "purs-tidy format-in-place src test bench parse-package-set",
     "format:check": "purs-tidy check src test bench parse-package-set"
   },
@@ -14,6 +14,6 @@
     "purescript": "^0.15.15",
     "purescript-psa": "^0.9.0",
     "purs-tidy": "^0.11.0",
-    "spago": "^0.21.0"
+    "spago": "^0.93.44"
   }
 }
