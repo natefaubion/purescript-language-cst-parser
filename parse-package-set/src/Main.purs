@@ -156,9 +156,9 @@ defaultSpagoYaml = Array.intercalate "\n"
   , "  name: test-parser"
   , "  dependencies: []"
   , "workspace:"
-  , "  package_set:"
+  , "  packageSet:"
   , "    registry: 64.9.0"
-  , "  extra_packages: {}"
+  , "  extraPackages: {}"
   ]
 
 getPursFiles :: Int -> FilePath -> Aff (Array FilePath)
