@@ -367,12 +367,17 @@
               "node-fs": ">=9.2.0 <10.0.0"
             },
             {
+              "node-glob-basic": ">=2.0.0 <3.0.0"
+            },
+            {
               "node-path": ">=5.0.1 <6.0.0"
             },
             {
               "node-process": ">=11.2.0 <12.0.0"
             },
-            "node-streams",
+            {
+              "node-streams": ">=9.0.1 <10.0.0"
+            },
             {
               "numbers": ">=9.0.1 <10.0.0"
             },
@@ -427,6 +432,7 @@
             "node-child-process",
             "node-event-emitter",
             "node-fs",
+            "node-glob-basic",
             "node-os",
             "node-path",
             "node-process",
@@ -1026,6 +1032,28 @@
         "prelude",
         "strings",
         "unsafe-coerce"
+      ]
+    },
+    "node-glob-basic": {
+      "type": "registry",
+      "version": "2.0.0",
+      "integrity": "sha256-COPsHFpqwFGOBbo3DZ4yQLp5UTNshLcINIV2P3h8g6o=",
+      "dependencies": [
+        "aff",
+        "effect",
+        "either",
+        "foldable-traversable",
+        "lists",
+        "maybe",
+        "node-fs",
+        "node-path",
+        "node-process",
+        "ordered-collections",
+        "parallel",
+        "prelude",
+        "refs",
+        "strings",
+        "tuples"
       ]
     },
     "node-os": {

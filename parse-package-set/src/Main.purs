@@ -18,9 +18,6 @@ import Data.Newtype (un)
 import Data.Number.Format as NF
 import Data.String as Str
 import Data.String.CodeUnits as String
-import Data.String.Regex as Regex
-import Data.String.Regex.Flags (noFlags)
-import Data.String.Regex.Unsafe (unsafeRegex)
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.AVar as EffectAVar
@@ -36,10 +33,12 @@ import Node.ChildProcess (SpawnSyncOptions)
 import Node.ChildProcess as Exec
 import Node.ChildProcess.Types (Exit(..))
 import Node.Encoding (Encoding(..))
-import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
-import Node.FS.Stats as FS
+import Node.FS.Aff (readTextFile)
+import Node.Glob.Basic as Glob
 import Node.Path (FilePath)
+import Node.Path as Path
 import Node.Process (stderr)
+import Node.Process as Process
 import Node.Stream as Stream
 import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
@@ -65,19 +64,15 @@ execSpawn proc args options = do
 
 main :: Effect Unit
 main = runAff_ (either throwException mempty) do
-  tmpPath <- liftEffect $ tmpdir "language-cst-parser-parse-package-set"
-
-  liftEffect $ Console.log $ "Making new project in " <> tmpPath
-
-  writeTextFile UTF8 (tmpPath <> "/spago.yaml") defaultSpagoYaml
-
-  s <- liftEffect $ execSpawn "spago" [ "ls", "packages", "--json" ] (_ { cwd = Just tmpPath })
+  dir <- liftEffect $ Process.cwd
+  let installPath = Path.concat [ dir, "parse-package-set", "package-set-install" ]
+  s <- liftEffect $ execSpawn "spago" [ "ls", "packages", "--json" ] (_ { cwd = Just installPath })
   packages <- case decodeJson =<< parseJson s of
     Left err -> throwError $ error $ printJsonDecodeError err
     Right (object :: Object Json) -> pure $ Object.keys object
-  _ <- liftEffect $ execSpawn "spago" ([ "install", "--verbose" ] <> packages) (_ { cwd = Just tmpPath })
+  _ <- liftEffect $ execSpawn "spago" ([ "install" ] <> packages) (_ { cwd = Just installPath })
 
-  pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
+  pursFiles <- Array.fromFoldable <$> Glob.expandGlobs (Path.concat [ installPath, ".spago", "p" ]) [ "*/src/**/*.purs" ]
   moduleResults <- parseModulesFromFiles pursFiles
 
   let
@@ -163,33 +158,6 @@ main = runAff_ (either throwException mempty) do
     CycleDetected _ -> Console.log $ Array.intercalate " "
       [ "Error: cycle detected in module graph"
       ]
-
-defaultSpagoYaml :: String
-defaultSpagoYaml = Array.intercalate "\n"
-  [ "package:"
-  , "  name: test-parser"
-  , "  dependencies: []"
-  , "workspace:"
-  , "  packageSet:"
-  , "    registry: 64.9.0"
-  , "  extraPackages: {}"
-  ]
-
-getPursFiles :: Int -> FilePath -> Aff (Array FilePath)
-getPursFiles depth root = do
-  readdir root >>= foldMap \file -> do
-    let path = root <> "/" <> file
-    stats <- stat path
-    if FS.isDirectory stats then
-      if depth == 2 && file /= "src" then do
-        pure []
-      else
-        getPursFiles (depth + 1) path
-    else if Regex.test pursRegex path then
-      pure [ path ]
-    else pure []
-  where
-  pursRegex = unsafeRegex "\\.purs$" noFlags
 
 type ModuleResult =
   { path :: FilePath

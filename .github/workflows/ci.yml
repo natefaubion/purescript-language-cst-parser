@@ -19,10 +19,18 @@ jobs:
       - name: Cache PureScript dependencies
         uses: actions/cache@v4
         with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('**/spago.lock') }}
+          key: ${{ runner.os }}-spago-${{ hashFiles('/spago.lock') }}
           path: |
             .spago
             output
+
+      - name: Cache package set dependencies
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-spago-${{ hashFiles('/parse-package-set/package-set-install/spago.lock') }}
+          path: |
+            parse-package-set/package-set-install/.spago
+            parse-package-set/package-set-install/output
 
       - name: Cache Spago downloads
         uses: actions/cache@v4
