@@ -40,8 +40,21 @@ jobs:
         run: npm run format:check
 
       - name: Parse package sets
-        run: npm run parse-package-set
-        after_failure: sleep 10
+        run: |
+          npm run parse-package-set 2> parse-package-set-errors.log
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "Parse package sets failed with exit code $exit_code"
+            exit $exit_code
+          fi
+
+      - name: Upload parse package sets error log
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: parse-package-set-errors
+          path: parse-package-set-errors.log
+          retention-days: 30
 
       - name: Run file benchmark
         run: npm run bench-file src/PureScript/CST/Parser.purs
