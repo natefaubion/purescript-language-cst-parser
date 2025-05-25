@@ -24,6 +24,12 @@ jobs:
             .spago
             output
 
+      - name: Cache Spago downloads
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-spago-nodejs-cache
+          path: ~/.cache/spago-nodejs
+
       - name: Install npm dependencies
         run: npm install --include=dev
 
