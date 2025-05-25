@@ -39,8 +39,8 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      # - name: Parse package sets
-      #   run: npm run parse-package-set
+      - name: Parse package sets
+        run: npm run parse-package-set
 
       - name: Run file benchmark
         run: npm run bench-file src/PureScript/CST/Parser.purs
