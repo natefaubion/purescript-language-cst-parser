@@ -61,7 +61,7 @@ main = runAff_ (either throwException mempty) do
   packages <- case decodeJson =<< parseJson s of
     Left err -> throwError $ error $ printJsonDecodeError err
     Right (object :: Object Json) -> pure $ Object.keys object
-  _ <- liftEffect $ Exec.execSync' ("spago install " <> Str.joinWith " " packages) (_ { cwd = Just tmpPath })
+  _ <- liftEffect $ Exec.execSync' ("spago install --verbose " <> Str.joinWith " " packages) (_ { cwd = Just tmpPath })
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
   moduleResults <- parseModulesFromFiles pursFiles
