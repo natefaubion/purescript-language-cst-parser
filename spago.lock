@@ -370,6 +370,9 @@
               "node-path": ">=5.0.1 <6.0.0"
             },
             {
+              "node-process": ">=11.2.0 <12.0.0"
+            },
+            {
               "numbers": ">=9.0.1 <10.0.0"
             },
             {
@@ -425,6 +428,7 @@
             "node-fs",
             "node-os",
             "node-path",
+            "node-process",
             "node-streams",
             "nonempty",
             "now",

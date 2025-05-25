@@ -3,6 +3,8 @@ module Main where
 import Prelude
 
 import Control.Parallel (parTraverse)
+import Data.Argonaut.Core (Json)
+import Data.Argonaut.Decode (parseJson, decodeJson, printJsonDecodeError)
 import Data.Array (foldMap)
 import Data.Array as Array
 import Data.Array.NonEmpty as NEA
@@ -26,28 +28,40 @@ import Effect.Aff (Aff, runAff_, throwError, error)
 import Effect.Aff.AVar as AVar
 import Effect.Class (liftEffect)
 import Effect.Console as Console
-import Effect.Exception (throwException)
+import Effect.Exception (throw, throwException)
+import Foreign.Object (Object)
+import Foreign.Object as Object
 import Node.Buffer as Buffer
+import Node.ChildProcess (SpawnSyncOptions)
 import Node.ChildProcess as Exec
+import Node.ChildProcess.Types (Exit(..))
 import Node.Encoding (Encoding(..))
 import Node.FS.Aff (readTextFile, readdir, stat, writeTextFile)
 import Node.FS.Stats as FS
 import Node.Path (FilePath)
+import Node.Process (stderr)
+import Node.Stream as Stream
 import PureScript.CST (RecoveredParserResult(..), parseModule, printModule)
 import PureScript.CST.Errors (printParseError)
 import PureScript.CST.ModuleGraph (sortModules, ModuleSort(..))
 import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Types (Module(..), ModuleHeader)
-import Data.Argonaut.Core (Json)
-import Data.Argonaut.Decode (parseJson, decodeJson, printJsonDecodeError)
-import Foreign.Object (Object)
-import Foreign.Object as Object
 
 foreign import tmpdir :: String -> Effect String
 
 foreign import hrtime :: Effect { seconds :: Number, nanos :: Number }
 
 foreign import hrtimeDiff :: { seconds :: Number, nanos :: Number } -> Effect { seconds :: Number, nanos :: Number }
+
+execSpawn :: String -> Array String -> (SpawnSyncOptions -> SpawnSyncOptions) -> Effect String
+execSpawn proc args options = do
+  res <- Exec.spawnSync' proc args options
+  case res.exitStatus of
+    Normally 0 ->
+      Buffer.toString UTF8 res.stdout
+    _ -> do
+      _ <- Stream.write stderr res.stderr
+      throw $ "Child process failed: " <> proc <> " " <> Str.joinWith " " args
 
 main :: Effect Unit
 main = runAff_ (either throwException mempty) do
@@ -57,11 +71,11 @@ main = runAff_ (either throwException mempty) do
 
   writeTextFile UTF8 (tmpPath <> "/spago.yaml") defaultSpagoYaml
 
-  s <- liftEffect $ Buffer.toString UTF8 =<< Exec.execSync' "spago ls packages --json" (_ { cwd = Just tmpPath })
+  s <- liftEffect $ execSpawn "spago" [ "ls", "packages", "--json" ] (_ { cwd = Just tmpPath })
   packages <- case decodeJson =<< parseJson s of
     Left err -> throwError $ error $ printJsonDecodeError err
     Right (object :: Object Json) -> pure $ Object.keys object
-  _ <- liftEffect $ Exec.execSync' ("spago install --verbose " <> Str.joinWith " " packages) (_ { cwd = Just tmpPath })
+  _ <- liftEffect $ execSpawn "spago" ([ "install", "--verbose" ] <> packages) (_ { cwd = Just tmpPath })
 
   pursFiles <- getPursFiles 0 (tmpPath <> "/.spago")
   moduleResults <- parseModulesFromFiles pursFiles
