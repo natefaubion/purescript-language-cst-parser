@@ -9,5 +9,3 @@ generated-docs
 .purs*
 .psa*
 .spago
-
-*.lock

@@ -7,8 +7,8 @@
     "parse-package-set": "spago run --package parse-package-set",
     "bench-file": "spago build --package bench && node --expose-gc --input-type=\"module\" -e \"import { main } from './output/BenchFile/index.js';main()\"",
     "parse-file": "spago build --package bench && node --input-type=\"module\" -e \"import { main } from './output/ParseFile/index.js';main()\"",
-    "format": "purs-tidy format-in-place src test bench parse-package-set",
-    "format:check": "purs-tidy check src test bench parse-package-set"
+    "format": "purs-tidy format-in-place src test bench/src parse-package-set/src",
+    "format:check": "purs-tidy check src test bench/src parse-package-set/src"
   },
   "devDependencies": {
     "purescript": "^0.15.15",

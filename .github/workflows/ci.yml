@@ -19,10 +19,24 @@ jobs:
       - name: Cache PureScript dependencies
         uses: actions/cache@v4
         with:
-          key: ${{ runner.os }}-spago-${{ hashFiles('**/spago.lock') }}
+          key: ${{ runner.os }}-spago-${{ hashFiles('spago.lock') }}
           path: |
             .spago
             output
+
+      - name: Cache package set dependencies
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-spago-${{ hashFiles('parse-package-set/package-set-install/spago.lock') }}
+          path: |
+            parse-package-set/package-set-install/.spago
+            parse-package-set/package-set-install/output
+
+      - name: Cache Spago downloads
+        uses: actions/cache@v4
+        with:
+          key: ${{ runner.os }}-spago-nodejs-cache
+          path: ~/.cache/spago-nodejs
 
       - name: Install npm dependencies
         run: npm install --include=dev
@@ -39,8 +53,22 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      # - name: Parse package sets
-      #   run: npm run parse-package-set
+      - name: Parse package sets
+        run: |
+          npm run parse-package-set 2> parse-package-set-errors.log
+          exit_code=$?
+          if [ $exit_code -ne 0 ]; then
+            echo "Parse package sets failed with exit code $exit_code"
+            exit $exit_code
+          fi
+
+      - name: Upload parse package sets error log
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: parse-package-set-errors
+          path: parse-package-set-errors.log
+          retention-days: 30
 
       - name: Run file benchmark
         run: npm run bench-file src/PureScript/CST/Parser.purs
