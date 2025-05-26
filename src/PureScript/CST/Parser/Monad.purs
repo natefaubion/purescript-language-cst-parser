@@ -51,6 +51,11 @@ initialParserState stream =
   , stream
   }
 
+appendConsumed :: ParserState -> ParserState -> ParserState
+appendConsumed { consumed } state = case consumed, state.consumed of
+  true, false -> state { consumed = true }
+  _, _ -> state
+
 newtype Parser a = Parser
   ( forall r
      . Fn4
@@ -78,7 +83,7 @@ instance Apply Parser where
               more \_ ->
                 runFn4 p2 state2 more resume
                   ( mkFn2 \state3 a ->
-                      runFn2 done state3 (f a)
+                      runFn2 done (state2 `appendConsumed` state3) (f a)
                   )
           )
     )
@@ -96,7 +101,7 @@ instance Bind Parser where
           ( mkFn2 \state2 a ->
               more \_ -> do
                 let (Parser p2) = k a
-                runFn4 p2 state2 more resume done
+                runFn4 p2 (state1 `appendConsumed` state2) more resume done
           )
     )
 
@@ -222,7 +227,7 @@ many (Parser p) = Parser
                   runFn2 done state2 (Array.reverse (List.toUnfoldable acc))
             )
             ( mkFn2 \state3 value ->
-                runFn2 go (List.Cons value acc) state3
+                runFn2 go (List.Cons value acc) (state2 `appendConsumed` state3)
             )
       runFn2 go List.Nil state1
   )
