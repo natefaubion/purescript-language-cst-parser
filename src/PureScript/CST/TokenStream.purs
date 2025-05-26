@@ -5,6 +5,7 @@ module PureScript.CST.TokenStream
   , consTokens
   , layoutStack
   , unwindLayout
+  , currentIndentColumn
   ) where
 
 import Prelude
@@ -13,11 +14,11 @@ import Data.Foldable (class Foldable, foldr)
 import Data.Lazy (Lazy)
 import Data.Lazy as Lazy
 import Data.List (List(..), (:))
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe, maybe)
 import Data.Newtype (class Newtype, unwrap)
 import Data.Tuple (Tuple(..))
 import PureScript.CST.Errors (ParseError)
-import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, isIndented, lytToken)
+import PureScript.CST.Layout (LayoutDelim(..), LayoutStack, currentIndent, isIndented, lytToken)
 import PureScript.CST.Types (Comment, LineFeed, SourcePos, SourceToken, Token(..))
 
 newtype TokenStream = TokenStream (Lazy TokenStep)
@@ -64,3 +65,21 @@ unwindLayout pos eof = go
               TokenCons (lytToken pos (TokLayoutEnd pos'.column)) pos (go tl) tl
           | otherwise ->
               step (go tl)
+
+-- In the token stream, the layout stack represents the state after the token.
+-- When determining the current indent level, this creates an edge case relating
+-- to TokLayoutEnd. The layout stack will return the next indent, but for the
+-- purposes of recovery, we want TokLayoutEnd column to be included as the current
+-- indent, necessitating special handling.
+currentIndentColumn :: TokenStream -> Int
+currentIndentColumn stream = case step stream of
+  TokenError _ _ _ stk ->
+    stkColumn stk
+  TokenEOF _ _ ->
+    0
+  TokenCons { value: TokLayoutEnd col } _ _ _ ->
+    col
+  TokenCons _ _ _ stk ->
+    stkColumn stk
+  where
+  stkColumn = maybe 0 _.column <<< currentIndent

@@ -1,4 +1,4 @@
-module Test.Main where
+module Test.Main (main) where
 
 import Prelude
 import Prim hiding (Type)
@@ -367,6 +367,17 @@ main = do
     """
     case _ of
       (ParseFailed _ :: RecoveredParserResult Module) ->
+        true
+      _ ->
+        false
+
+  assertParse "Indented module"
+    """
+    module Test where
+      test = 42
+    """
+    case _ of
+      ParseSucceeded (Module _) ->
         true
       _ ->
         false

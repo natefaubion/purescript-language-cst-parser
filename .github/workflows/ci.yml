@@ -45,7 +45,7 @@ jobs:
         run: npm run install
 
       - name: Build project
-        run: npm run build -- --pedantic-packages
+        run: npm run build -- --pedantic-packages --strict
 
       - name: Run tests
         run: npm run test -- --offline --quiet
