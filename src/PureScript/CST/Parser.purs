@@ -19,15 +19,14 @@ import Data.Array as Array
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..))
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), uncurry)
 import Prim as P
 import PureScript.CST.Errors (ParseError(..), RecoveredError(..))
-import PureScript.CST.Layout (currentIndent)
 import PureScript.CST.Parser.Monad (Parser, eof, lookAhead, many, optional, recover, take, try)
-import PureScript.CST.TokenStream (TokenStep(..), TokenStream, layoutStack)
+import PureScript.CST.TokenStream (TokenStep(..), TokenStream, currentIndentColumn)
 import PureScript.CST.TokenStream as TokenStream
 import PureScript.CST.Types (AppSpine(..), Binder(..), ClassFundep(..), DataCtor(..), DataMembers(..), Declaration(..), Delimited, DoStatement(..), Export(..), Expr(..), Fixity(..), FixityOp(..), Foreign(..), Guarded(..), GuardedExpr(..), Ident(..), Import(..), ImportDecl(..), Instance(..), InstanceBinding(..), IntValue(..), Label(..), Labeled(..), LetBinding(..), Module(..), ModuleBody(..), ModuleHeader(..), ModuleName(..), Name(..), OneOrDelimited(..), Operator(..), PatternGuard(..), Prefixed(..), Proper(..), QualifiedName(..), RecordLabeled(..), RecordUpdate(..), Role(..), Row(..), Separated(..), SourceToken, Token(..), Type(..), TypeVarBinding(..), Where(..), Wrapped(..))
 
@@ -1188,7 +1187,7 @@ recoverTokensWhile :: (SourceToken -> Int -> Boolean) -> TokenStream -> Tuple (A
 recoverTokensWhile p initStream = go [] initStream
   where
   indent :: Int
-  indent = maybe 0 _.column $ currentIndent $ layoutStack initStream
+  indent = currentIndentColumn initStream
 
   go :: Array SourceToken -> TokenStream -> Tuple (Array SourceToken) TokenStream
   go acc stream = case TokenStream.step stream of

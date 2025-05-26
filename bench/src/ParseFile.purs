@@ -17,7 +17,7 @@ import Node.FS.Aff (readFile)
 import Node.Process as Process
 import PureScript.CST (RecoveredParserResult(..), parseModule)
 import PureScript.CST.Errors (ParseError, printParseError)
-import PureScript.CST.Lexer (lex)
+import PureScript.CST.Lexer (lexModule)
 import PureScript.CST.Parser.Monad (PositionedError)
 import PureScript.CST.Print (TokenOption(..), printSourceTokenWithOption)
 import PureScript.CST.TokenStream (TokenStep(..), TokenStream, step)
@@ -36,7 +36,7 @@ main = launchAff_ do
           tokens =
             map (foldMap (printSourceTokenWithOption ShowLayout))
               $ tokenStreamToArray
-              $ lex contents
+              $ lexModule contents
         for_ tokens Console.log
       else
         mempty
