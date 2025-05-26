@@ -88,11 +88,23 @@ parens = wrapped tokLeftParen tokRightParen
 braces :: forall a. Parser a -> Parser (Wrapped a)
 braces = wrapped tokLeftBrace tokRightBrace
 
+layoutStatements :: forall f a. (a -> Array a -> f a) -> Parser a -> Parser (f a)
+layoutStatements f statementParser = ado
+  head <- statementParser
+  tail <- many (tokLayoutSep *> statementParser)
+  in f head tail
+
 layoutNonEmpty :: forall a. Parser a -> Parser (NonEmptyArray a)
-layoutNonEmpty valueParser = ado
-  head <- tokLayoutStart *> valueParser
-  tail <- many (tokLayoutSep *> valueParser) <* tokLayoutEnd
-  in NonEmptyArray.cons' head tail
+layoutNonEmpty statementParser =
+  tokLayoutStart *> layoutStatements NonEmptyArray.cons' statementParser <* tokLayoutEnd
+
+layout :: forall a. Parser a -> Parser (Array a)
+layout statementParser =
+  tokLayoutStart *> statements <* tokLayoutEnd
+  where
+  statements =
+    layoutStatements Array.cons statementParser
+      <|> pure []
 
 parseModule :: Parser (Recovered Module)
 parseModule = do
@@ -678,20 +690,7 @@ parseDo = do
 parseAdo :: Parser (Recovered Expr)
 parseAdo = do
   keyword <- tokQualifiedKeyword "ado"
-  -- A possibly-empty version of `layoutNonEmpty` to handle empty `ado in`
-  statements <- do
-    let
-      -- `recoverDoStatement` recovers too much if it is immediately
-      -- confronted with `TokLayoutEnd`, since that is associated with a
-      -- `layoutStack` _of the parent_ as opposed to the stuff we actually
-      -- want to recover, which we would correctly guess if we saw a statement
-      -- or two inside the block
-      valueParser = recoverDoStatement parseDoStatement
-      nonEmptyCase =
-        Array.cons <$> valueParser <*> many (tokLayoutSep *> valueParser)
-    _ <- tokLayoutStart
-    -- So we explicitly handle `TokLayoutEnd` ahead of time:
-    [] <$ tokLayoutEnd <|> nonEmptyCase <* tokLayoutEnd
+  statements <- layout (recoverDoStatement parseDoStatement)
   in_ <- tokKeyword "in"
   result <- parseExpr
   pure $ ExprAdo { keyword, statements, in: in_, result }
